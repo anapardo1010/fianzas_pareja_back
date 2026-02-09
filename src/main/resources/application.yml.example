@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pareja_finanzas
+    username: <DB_USERNAME>
+    password: <DB_PASSWORD>
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: <JWT_SECRET>
+  expiration: 86400000 # 24 horas en milisegundos
+
+logging:
+  level:
+    org.example.app.security: DEBUG
+    org.springframework.security: DEBUG
+
+# Nota: Reemplaza los placeholders con tus credenciales locales o usa variables de entorno
+# para no versionar secretos. Mantén 'application.yml' fuera del repo y usa este archivo como ejemplo.
+
