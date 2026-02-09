@@ -1,6 +1,6 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/pareja_finanzas
-    username: postgres
-    password: flamin1010200
+    username: ''
+    password: ''
 
