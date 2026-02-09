@@ -15,6 +15,12 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private JwtService jwtService;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // No filtrar peticiones OPTIONS (preflight CORS)
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         final String authHeader = request.getHeader("Authorization");
@@ -32,4 +38,3 @@ public class TenantContextFilter extends OncePerRequestFilter {
         }
     }
 }
-
