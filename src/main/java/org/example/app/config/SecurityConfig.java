@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.app.security.JwtAuthenticationFilter;
 import org.example.app.security.TenantContextFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,6 +16,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 
+import java.util.Arrays;
+
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
@@ -23,17 +26,22 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TenantContextFilter tenantContextFilter;
 
+    @Value("${cors.allowed-origins:http://localhost:4200,http://localhost:4201}")
+    private String allowedOrigins;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(request -> {
                 CorsConfiguration config = new CorsConfiguration();
                 config.setAllowCredentials(true);
-                config.addAllowedOrigin("http://localhost:4200");
-                config.addAllowedOrigin("http://localhost:4201");
+                // Usar orígenes desde variable de entorno
+                Arrays.asList(allowedOrigins.split(",")).forEach(origin ->
+                    config.addAllowedOrigin(origin.trim())
+                );
                 config.addAllowedHeader("*");
                 config.addAllowedMethod("*");
-                config.setExposedHeaders(java.util.Arrays.asList("Authorization", "Content-Type", "X-Total-Count"));
+                config.setExposedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Total-Count"));
                 return config;
             }))
             .csrf(csrf -> csrf.disable())
@@ -42,6 +50,7 @@ public class SecurityConfig {
                 // Endpoints públicos (sin autenticación)
                 .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/swagger-resources/**", "/webjars/**").permitAll()
+                .requestMatchers("/", "/error").permitAll()
                 // Todos los demás endpoints requieren autenticación
                 .anyRequest().authenticated()
             )
