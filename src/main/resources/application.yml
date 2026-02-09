@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pareja_finanzas}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:flamin1010200}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET:TuClaveSecretaSuperSeguraParaJWT2024FinanzasApp123456789}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+server:
+  port: ${PORT:8080}
+
+logging:
+  level:
+    org.example.app.security: ${LOG_LEVEL:INFO}
+    org.springframework.security: ${LOG_LEVEL:INFO}

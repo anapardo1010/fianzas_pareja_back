@@ -1,32 +1,5 @@
-# Maven / Java
-/target/
-/.mvn/
-
-# IDEs
-.idea/
-*.iml
-.vscode/
-
-# OS
-.DS_Store
-
-# Logs
-*.log
-
-# Build artifacts
-*.jar
-*.war
-
-# Local env / secret config
-/src/main/resources/application.yml
-
-# Optional
-node_modules/
-
-# IntelliJ
-out/
-
-# Others
-*.class
-.gradle/
+# Application properties con credenciales locales
+application-local.yml
+application-dev.yml
+.env
 
