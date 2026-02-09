@@ -1,5 +1,6 @@
 package org.example.app.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -7,13 +8,16 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
- * Configuración de CORS para permitir peticiones desde el frontend Angular.
- * Permite solicitudes desde http://localhost:4200 (desarrollo).
+ * Configuración de CORS para permitir peticiones desde el frontend.
  */
 @Configuration
 public class CorsConfig {
+
+    @Value("${cors.allowed-origins:http://localhost:4200,http://localhost:4201}")
+    private String allowedOrigins;
 
     @Bean
     public CorsFilter corsFilter() {
@@ -23,11 +27,9 @@ public class CorsConfig {
         // Permitir credenciales (cookies, headers de autorización)
         config.setAllowCredentials(true);
 
-        // Orígenes permitidos (Angular en desarrollo)
-        config.setAllowedOrigins(Arrays.asList(
-            "http://localhost:4200",
-            "http://localhost:4201" // Por si usas otro puerto
-        ));
+        // Orígenes permitidos (desde variable de entorno o valores por defecto)
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        config.setAllowedOrigins(origins);
 
         // Headers permitidos
         config.addAllowedHeader("*");
@@ -50,4 +52,3 @@ public class CorsConfig {
         return new CorsFilter(source);
     }
 }
-
