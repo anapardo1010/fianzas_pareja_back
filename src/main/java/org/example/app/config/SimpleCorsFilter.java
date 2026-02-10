@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+// DESHABILITADO: Esta configuración manual conflictúa con SecurityConfig
+// Usar solo la configuración de CORS en SecurityConfig
+/*
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class SimpleCorsFilter implements Filter {
@@ -34,3 +37,4 @@ public class SimpleCorsFilter implements Filter {
         chain.doFilter(req, res);
     }
 }
+*/

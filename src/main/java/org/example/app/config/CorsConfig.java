@@ -11,8 +11,10 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Configuración de CORS para permitir peticiones desde el frontend.
+ * DESHABILITADO: Configuración duplicada que conflictúa con SecurityConfig.
+ * Usar solo la configuración de CORS en SecurityConfig.
  */
+/*
 @Configuration
 public class CorsConfig {
 
@@ -52,3 +54,4 @@ public class CorsConfig {
         return new CorsFilter(source);
     }
 }
+*/

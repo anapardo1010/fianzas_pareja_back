@@ -40,11 +40,22 @@ public class SecurityConfig {
 
         // Usar orígenes desde variable de entorno
         List<String> origins = Arrays.asList(allowedOrigins.split(","));
-        origins.forEach(origin -> config.addAllowedOrigin(origin.trim()));
+        origins.forEach(origin -> {
+            String trimmedOrigin = origin.trim();
+            config.addAllowedOrigin(trimmedOrigin);
+            log.info("✅ CORS: Origen permitido -> {}", trimmedOrigin);
+        });
 
+        // Permitir todos los headers (importante para preflight)
         config.setAllowedHeaders(Arrays.asList("*"));
+
+        // Métodos permitidos
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+
+        // Headers expuestos
         config.setExposedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Total-Count"));
+
+        // Max age para preflight cache (1 hora)
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -54,12 +65,15 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        log.info("🔧 Configurando SecurityFilterChain...");
+
         http
+            // CORS DEBE IR PRIMERO
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Permitir todas las peticiones OPTIONS (preflight)
+                // Permitir TODAS las peticiones OPTIONS sin autenticación (CRÍTICO para CORS)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Endpoints públicos (sin autenticación)
                 .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
@@ -81,6 +95,8 @@ public class SecurityConfig {
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(tenantContextFilter, JwtAuthenticationFilter.class);
+
+        log.info("✅ SecurityFilterChain configurado correctamente");
         return http.build();
     }
 
