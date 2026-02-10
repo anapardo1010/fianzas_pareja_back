@@ -47,9 +47,9 @@ public class SecurityConfig {
         });
 
         // Permitir todos los headers (importante para preflight)
-        config.setAllowedHeaders(Arrays.asList("*"));
+        config.addAllowedHeader("*");
 
-        // Métodos permitidos
+        // Métodos permitidos (incluyendo OPTIONS para preflight)
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
 
         // Headers expuestos
