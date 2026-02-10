@@ -1,22 +1,28 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/pareja_finanzas
-    username: postgres
-    password: flamin1010200
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pareja_finanzas}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:flamin1010200}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create
-    show-sql: true
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 jwt:
-  secret: TuClaveSecretaSuperSeguraParaJWT2024FinanzasApp123456789
-  expiration: 86400000 # 24 horas en milisegundos
+  secret: ${JWT_SECRET:TuClaveSecretaSuperSeguraParaJWT2024FinanzasApp123456789}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201,https://finanzas-pareja-front.onrender.com}
+
+server:
+  port: ${PORT:8080}
 
 logging:
   level:
-    org.example.app.security: DEBUG
-    org.springframework.security: DEBUG
+    org.example.app.security: ${LOG_LEVEL:INFO}
+    org.springframework.security: ${LOG_LEVEL:INFO}
