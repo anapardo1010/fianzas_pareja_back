@@ -23,7 +23,6 @@ org/example/app/domain/repository/TransactionRepository.class
 org/example/app/web/model/ResponseModel$Metadata.class
 org/example/app/domain/repository/PaymentMethodRepository.class
 org/example/app/domain/entity/Installment.class
-org/example/app/config/CorsConfig.class
 org/example/app/web/model/ProportionalSettlementModel.class
 org/example/app/security/TenantContextHolder.class
 org/example/app/config/SwaggerConfig.class

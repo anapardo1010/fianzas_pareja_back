@@ -22,6 +22,18 @@ cors:
 server:
   port: ${PORT:8080}
 
+# Configuración de Springdoc/Swagger
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  show-actuator: false
+
 logging:
   level:
     org.example.app.security: ${LOG_LEVEL:INFO}

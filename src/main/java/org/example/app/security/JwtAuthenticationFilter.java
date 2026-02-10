@@ -15,6 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.List;
 
 @Component
 @Slf4j
@@ -22,10 +23,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtService jwtService;
 
+    // Rutas que NO deben pasar por el filtro JWT (son públicas)
+    private static final List<String> PUBLIC_PATHS = List.of(
+        "/api/auth/",
+        "/api/v1/auth/",
+        "/v3/api-docs",
+        "/swagger-ui",
+        "/swagger-resources",
+        "/webjars/",
+        "/favicon.ico",
+        "/error"
+    );
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+
         // No filtrar peticiones OPTIONS (preflight CORS)
-        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            log.debug("⏭️ Saltando filtro JWT para OPTIONS: {}", path);
+            return true;
+        }
+
+        // No filtrar rutas públicas
+        boolean isPublic = PUBLIC_PATHS.stream().anyMatch(path::startsWith);
+        if (isPublic) {
+            log.debug("⏭️ Saltando filtro JWT para ruta pública: {}", path);
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -34,16 +62,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
 
-        log.info("=== JWT Filter - Path: {}, Method: {} ===", request.getRequestURI(), request.getMethod());
+        log.debug("🔐 JWT Filter - Path: {}, Method: {}", request.getRequestURI(), request.getMethod());
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warn("❌ No Authorization header or doesn't start with Bearer");
+            log.debug("⚠️ No Authorization header presente (ruta protegida sin token)");
             filterChain.doFilter(request, response);
             return;
         }
 
         jwt = authHeader.substring(7);
-        log.debug("Token extracted: {}", jwt.substring(0, Math.min(20, jwt.length())) + "...");
+        log.debug("🔑 Token extracted: {}...", jwt.substring(0, Math.min(20, jwt.length())));
 
         try {
             if (jwtService.isTokenValid(jwt)) {
@@ -65,12 +93,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                log.info("✅ Autenticación configurada - Authorities: {}", authToken.getAuthorities());
+                log.debug("✅ Autenticación configurada para userId: {}", userId);
             } else {
                 log.error("❌ Token inválido o expirado");
             }
         } catch (Exception e) {
-            log.error("❌ Error al procesar token JWT: {}", e.getMessage(), e);
+            log.error("❌ Error al procesar token JWT: {}", e.getMessage());
         }
 
         filterChain.doFilter(request, response);

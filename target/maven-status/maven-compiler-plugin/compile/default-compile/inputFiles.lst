@@ -23,6 +23,7 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/Category.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/security/JwtAuthenticationFilter.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/InstallmentFacade.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/config/SimpleCorsFilter.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/UserModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/ResponseModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/TransactionService.java
