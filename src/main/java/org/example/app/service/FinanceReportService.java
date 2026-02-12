@@ -430,8 +430,10 @@ public class FinanceReportService {
     }
 
     /**
-     * Calcula cuánto debe pagar cada usuario por cada tarjeta de crédito según su porcentaje de contribución.
-     * Similar a la liquidación proporcional pero aplicado a los saldos de tarjetas.
+     * Calcula cuánto debe pagar cada usuario por cada tarjeta de crédito.
+     * Las transacciones compartidas se dividen proporcionalmente según porcentajes de contribución.
+     * Las transacciones no compartidas se asignan 100% al usuario que las realizó.
+     * Lo mismo aplica para las cuotas MSI, basado en si la transacción original es compartida.
      */
     public List<CreditCardProportionalPaymentModel> getCreditCardProportionalPayments(Long tenantId) {
         log.info("Calculando pagos proporcionales de tarjetas para tenant: {}", tenantId);
@@ -444,14 +446,69 @@ public class FinanceReportService {
          List<CreditCardBalanceModel> cardBalances = getCreditCardBalances(tenantId);
 
          for (CreditCardBalanceModel card : cardBalances) {
-            // Calcular cuánto debe pagar cada usuario según su porcentaje
+            // Parsear el periodo para obtener rangeStart y rangeEnd
+            String[] periodParts = card.getPeriodId().split("_");
+            LocalDate rangeStart = LocalDate.parse(periodParts[0]);
+            LocalDate rangeEnd = LocalDate.parse(periodParts[1]);
+
+            // Obtener transacciones del periodo para esta tarjeta
+            List<Transaction> transactions = transactionFacade.findByPaymentMethodAndDateRange(
+                card.getPaymentMethodId(), rangeStart, rangeEnd);
+
+            // Obtener cuotas MSI del periodo para esta tarjeta
+            List<Installment> installments = installmentFacade.findPendingByPaymentMethodAndDateRange(
+                card.getPaymentMethodId(), rangeStart, rangeEnd);
+
+            // Agrupar sumas de transacciones por usuario
+            Map<Long, BigDecimal> userTransactionSums = new HashMap<>();
+            for (User user : users) {
+                userTransactionSums.put(user.getId(), BigDecimal.ZERO);
+            }
+            for (Transaction transaction : transactions) {
+                if (transaction.getIsShared()) {
+                    // Dividir proporcionalmente
+                    for (User user : users) {
+                        BigDecimal userShare = transaction.getAmount()
+                            .multiply(user.getContributionPercentage())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                        userTransactionSums.put(user.getId(), userTransactionSums.get(user.getId()).add(userShare));
+                    }
+                } else {
+                    // Asignar 100% al usuario que la realizó
+                    Long userId = transaction.getUser().getId();
+                    userTransactionSums.put(userId, userTransactionSums.get(userId).add(transaction.getAmount()));
+                }
+            }
+
+            // Agrupar sumas de cuotas por usuario
+            Map<Long, BigDecimal> userInstallmentSums = new HashMap<>();
+            for (User user : users) {
+                userInstallmentSums.put(user.getId(), BigDecimal.ZERO);
+            }
+            for (Installment installment : installments) {
+                if (installment.getTransaction().getIsShared()) {
+                    // Dividir proporcionalmente
+                    for (User user : users) {
+                        BigDecimal userShare = installment.getInstallmentAmount()
+                            .multiply(user.getContributionPercentage())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                        userInstallmentSums.put(user.getId(), userInstallmentSums.get(user.getId()).add(userShare));
+                    }
+                } else {
+                    // Asignar 100% al usuario de la transacción original
+                    Long userId = installment.getTransaction().getUser().getId();
+                    userInstallmentSums.put(userId, userInstallmentSums.get(userId).add(installment.getInstallmentAmount()));
+                }
+            }
+
+            // Calcular cuánto debe pagar cada usuario
             List<UserPaymentShare> userShares = new ArrayList<>();
 
             for (User user : users) {
-                BigDecimal userPercentage = user.getContributionPercentage();
-                BigDecimal userAmount = card.getTotalDue()
-                    .multiply(userPercentage)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal userTransactionAmount = userTransactionSums.getOrDefault(user.getId(), BigDecimal.ZERO);
+                BigDecimal userInstallmentAmount = userInstallmentSums.getOrDefault(user.getId(), BigDecimal.ZERO);
+                BigDecimal userAmount = userTransactionAmount.add(userInstallmentAmount);
+                BigDecimal userPercentage = BigDecimal.valueOf(100); // Paga 100% de su parte asignada
 
                 userShares.add(new UserPaymentShare(
                     user.getId(),
@@ -460,8 +517,8 @@ public class FinanceReportService {
                     userAmount
                 ));
 
-                log.info("Tarjeta {}: Usuario {} ({}%) debe pagar ${} de ${} total",
-                    card.getBankName(), user.getName(), userPercentage, userAmount, card.getTotalDue());
+                log.info("Tarjeta {}: Usuario {} debe pagar ${} (transacciones ${} + cuotas ${})",
+                    card.getBankName(), user.getName(), userAmount, userTransactionAmount, userInstallmentAmount);
             }
 
             CreditCardProportionalPaymentModel payment = new CreditCardProportionalPaymentModel(

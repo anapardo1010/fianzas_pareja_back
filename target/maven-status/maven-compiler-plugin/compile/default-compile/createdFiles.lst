@@ -46,11 +46,9 @@ org/example/app/web/model/MarkPeriodPaidRequest.class
 org/example/app/domain/entity/PaymentMethod.class
 org/example/app/web/controller/UserController.class
 org/example/app/domain/repository/CategoryRepository.class
-org/example/app/web/controller/FinanceReportController.class
 org/example/app/security/JwtAuthenticationFilter$JwtPrincipal.class
 org/example/app/web/model/AuthRequestModel.class
 org/example/app/web/model/TransactionCreateModel.class
-org/example/app/service/FinanceReportService.class
 org/example/app/web/model/TenantModel.class
 org/example/app/domain/entity/User.class
 org/example/app/web/model/MonthlyBalanceModel.class
