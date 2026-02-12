@@ -12,7 +12,6 @@ spring:
     hikari:
       # Validación de conexiones para evitar usar sockets inválidos
       connection-test-query: SELECT 1
-      validation-timeout: 5000
       # Tiempo máximo para obtener una conexión del pool
       connection-timeout: 15000
       # Mantener algunas conexiones siempre activas
@@ -22,8 +21,6 @@ spring:
       idle-timeout: 60000
       # Renovar conexiones periódicamente (mitiga estados zombis en proxies)
       max-lifetime: 1800000
-      # Mantener vivo con pings
-      keepalive-time: 600000
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
