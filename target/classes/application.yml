@@ -1,34 +1,16 @@
 spring:
   datasource:
-    # URL con parámetros de seguridad para entornos Cloud/Proxies
-    # Nota: En Render, asegúrate de que la variable SPRING_DATASOURCE_URL
-    # termine en: ?prepareThreshold=0&preferQueryMode=simple
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pareja_finanzas}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:flamin1010200}
     driver-class-name: org.postgresql.Driver
-
     hikari:
-      # Eliminamos connection-test-query para evitar el error "pool is sealed"
-      # El driver moderno de Postgres ya usa isValid() automáticamente.
-
-      # Tiempos de espera (En milisegundos)
       connection-timeout: 30000
-      validation-timeout: 5000
-
-      # Gestión de Pool (Optimizado para Supabase Free Tier)
-      # No uses un pool muy grande en planes gratuitos para evitar "Too many connections"
-      maximum-pool-size: 5
       minimum-idle: 1
-
-      # Mantener conexiones vivas y saludables
-      # idle-timeout: Tiempo que una conexión puede estar ociosa
+      maximum-pool-size: 5
       idle-timeout: 60000
-      # max-lifetime: Tiempo total de vida. 10 min es ideal para evitar "Broken Pipes"
       max-lifetime: 600000
-      # keepalive-time: "Ping" cada 30 segundos para que Render no cierre el socket
       keepalive-time: 30000
-
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
@@ -36,37 +18,32 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        # Crucial para evitar que Hibernate intente obtener metadatos de forma
-        # bloqueante con el pooler de Supabase
-        temp.use_jdbc_metadata_defaults: false
-        jdbc.batch_size: 20
-        order_inserts: true
-        order_updates: true
+        temp:
+          use_jdbc_metadata_defaults: false
 
-# Configuración de Seguridad
 jwt:
   secret: ${JWT_SECRET:TuClaveSecretaSuperSeguraParaJWT2024FinanzasApp123456789}
   expiration: ${JWT_EXPIRATION:86400000}
 
-# Configuración de CORS
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,https://finanzas-pareja-front.onrender.com}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201,https://finanzas-pareja-front.onrender.com}
 
-# Configuración del Servidor
 server:
   port: ${PORT:8080}
-  # Ayuda a Render a manejar mejor el apagado elegante
-  shutdown: graceful
 
-# Documentación API
+# Configuración de Springdoc/Swagger
 springdoc:
   api-docs:
+    enabled: true
     path: /v3/api-docs
   swagger-ui:
+    enabled: true
     path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  show-actuator: false
 
 logging:
   level:
-    root: INFO
-    # Activa esto si vuelves a tener problemas de conexión para ver el detalle
-    com.zaxxer.hikari: WARN
+    org.example.app.security: ${LOG_LEVEL:INFO}
+    org.springframework.security: ${LOG_LEVEL:INFO}
