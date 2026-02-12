@@ -47,4 +47,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      * Busca transacciones por método de pago y rango de fechas.
      */
     List<Transaction> findByPaymentMethodIdAndDateBetween(Long paymentMethodId, LocalDate startDate, LocalDate endDate);
+
+    /**
+     * Elimina una transacción por su ID.
+     */
+    void deleteById(Long id);
 }

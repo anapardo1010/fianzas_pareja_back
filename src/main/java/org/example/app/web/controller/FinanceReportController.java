@@ -14,6 +14,7 @@ import org.example.app.web.model.UpcomingInstallmentModel;
 import org.example.app.web.model.CreditCardBalanceModel;
 import org.example.app.web.model.MarkPeriodPaidRequest;
 import org.example.app.web.model.CreditCardProportionalPaymentModel;
+import org.example.app.web.model.PaymentMethodBalanceModel;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,7 +50,9 @@ public class FinanceReportController {
             @Parameter(description = "Fecha de inicio del período (opcional si se usa year/month)", example = "2026-02-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "Fecha de fin del período (opcional)", example = "2026-02-28")
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Modo de cálculo: accrual (devengo) o cash (caja). Por defecto accrual.", example = "accrual")
+            @RequestParam(required = false, defaultValue = "accrual") String mode) {
 
         YearMonth yearMonth;
 
@@ -66,7 +69,7 @@ public class FinanceReportController {
             yearMonth = YearMonth.now();
         }
 
-        MonthlyBalanceModel balance = financeReportService.getMonthlyBalance(tenantId, yearMonth);
+        MonthlyBalanceModel balance = financeReportService.getMonthlyBalance(tenantId, yearMonth, mode);
         return ResponseEntity.ok(ResponseModel.success(balance, "Balance mensual calculado exitosamente"));
     }
 
@@ -199,5 +202,37 @@ public class FinanceReportController {
 
         List<CreditCardProportionalPaymentModel> payments = financeReportService.getCreditCardProportionalPayments(tenantId);
         return ResponseEntity.ok(ResponseModel.success(payments, "Pagos proporcionales de tarjetas calculados exitosamente"));
+    }
+
+    @GetMapping("/tenant/{tenantId}/balance-by-payment-method")
+    @Operation(summary = "Obtener balance por método de pago",
+            description = "Calcula el balance individual de cada método de pago (efectivo, débito, tarjetas) incluyendo transferencias entrantes y salientes")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Balance por método de pago calculado correctamente"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "403", description = "Acceso denegado"),
+            @ApiResponse(responseCode = "500", description = "Error interno del servidor")
+    })
+    public ResponseEntity<ResponseModel<List<PaymentMethodBalanceModel>>> getBalanceByPaymentMethod(
+            @Parameter(description = "ID del tenant", required = true, example = "1")
+            @PathVariable Long tenantId,
+            @Parameter(description = "Año del reporte (opcional)", example = "2026")
+            @RequestParam(required = false) Integer year,
+            @Parameter(description = "Mes del reporte (1-12, opcional)", example = "2")
+            @RequestParam(required = false) Integer month) {
+
+        YearMonth yearMonth;
+
+        // Si se proporcionan year y month, usarlos
+        if (year != null && month != null) {
+            yearMonth = YearMonth.of(year, month);
+        }
+        // Por defecto, usar el mes actual
+        else {
+            yearMonth = YearMonth.now();
+        }
+
+        List<PaymentMethodBalanceModel> balances = financeReportService.getBalanceByPaymentMethod(tenantId, yearMonth);
+        return ResponseEntity.ok(ResponseModel.success(balances, "Balance por método de pago calculado exitosamente"));
     }
 }

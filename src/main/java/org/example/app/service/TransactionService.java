@@ -51,11 +51,18 @@ public class TransactionService {
         // Validar que el usuario pertenece al tenant
         validateUserBelongsToTenant(user, tenant);
 
+        // Validar lógica de transferencias
+        PaymentMethod destinationPaymentMethod = null;
+        if ("TRANSFER".equalsIgnoreCase(createModel.getTransactionType())) {
+            validateTransferLogic(createModel, paymentMethod);
+            destinationPaymentMethod = validateAndGetPaymentMethod(createModel.getDestinationPaymentMethodId());
+        }
+
         // Validar lógica de MSI
         validateInstallmentLogic(createModel);
 
         // Crear la transacción principal
-        Transaction transaction = createTransactionEntity(createModel, tenant, user, category, paymentMethod);
+        Transaction transaction = createTransactionEntity(createModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
         Transaction savedTransaction = transactionFacade.save(transaction);
         log.info("Transacción creada con ID: {}", savedTransaction.getId());
 
@@ -116,6 +123,43 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Actualiza una transacción existente.
+     */
+    @Transactional
+    public TransactionModel updateTransaction(Long id, TransactionCreateModel updateModel) {
+        log.info("Actualizando transacción ID: {}", id);
+        // Validar existencia
+        Transaction existing = transactionFacade.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada: " + id));
+        // Validar entidades relacionadas
+        Tenant tenant = validateAndGetTenant(updateModel.getTenantId());
+        User user = validateAndGetUser(updateModel.getUserId());
+        Category category = validateAndGetCategory(updateModel.getCategoryId());
+        PaymentMethod paymentMethod = validateAndGetPaymentMethod(updateModel.getPaymentMethodId());
+        validateUserBelongsToTenant(user, tenant);
+        PaymentMethod destinationPaymentMethod = null;
+        if ("TRANSFER".equalsIgnoreCase(updateModel.getTransactionType())) {
+            validateTransferLogic(updateModel, paymentMethod);
+            destinationPaymentMethod = validateAndGetPaymentMethod(updateModel.getDestinationPaymentMethodId());
+        }
+        validateInstallmentLogic(updateModel);
+        // Crear entidad actualizada
+        Transaction updatedTransaction = createTransactionEntity(updateModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
+        updatedTransaction.setId(id);
+        Transaction result = transactionFacade.updateTransaction(updatedTransaction);
+        return TransactionModel.FN_ENTITY_TO_MODEL.apply(result);
+    }
+
+    /**
+     * Elimina una transacción existente.
+     */
+    @Transactional
+    public void deleteTransaction(Long id) {
+        log.info("Eliminando transacción ID: {}", id);
+        transactionFacade.deleteTransaction(id);
+    }
+
     // Métodos privados de validación y lógica de negocio
 
     private Tenant validateAndGetTenant(Long tenantId) {
@@ -160,9 +204,37 @@ public class TransactionService {
         }
     }
 
+    private void validateTransferLogic(TransactionCreateModel createModel, PaymentMethod sourcePaymentMethod) {
+        // Validar que el monto sea positivo
+        if (createModel.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto de la transferencia debe ser positivo");
+        }
+
+        // Validar que se haya especificado método de pago destino
+        if (createModel.getDestinationPaymentMethodId() == null) {
+            throw new IllegalArgumentException("Debe especificar el método de pago destino para transferencias");
+        }
+
+        // Validar que origen y destino sean diferentes
+        if (createModel.getPaymentMethodId().equals(createModel.getDestinationPaymentMethodId())) {
+            throw new IllegalArgumentException("El método de pago origen y destino deben ser diferentes");
+        }
+
+        // Las transferencias no pueden tener MSI
+        if (Boolean.TRUE.equals(createModel.getHasInstallments())) {
+            throw new IllegalArgumentException("Las transferencias no pueden tener cuotas MSI");
+        }
+
+        log.info("Transferencia válida: ${} desde {} hacia método de pago ID {}",
+                createModel.getAmount(),
+                sourcePaymentMethod != null ? sourcePaymentMethod.getBankName() : "desconocido",
+                createModel.getDestinationPaymentMethodId());
+    }
+
     private Transaction createTransactionEntity(TransactionCreateModel createModel, Tenant tenant,
-                                               User user, Category category, PaymentMethod paymentMethod) {
-        return new Transaction(
+                                               User user, Category category, PaymentMethod paymentMethod,
+                                               PaymentMethod destinationPaymentMethod) {
+        Transaction transaction = new Transaction(
             tenant,
             user,
             category,
@@ -175,6 +247,13 @@ public class TransactionService {
             createModel.getHasInstallments(),
             createModel.getTotalInstallments()
         );
+
+        // Si es transferencia, asignar el método de pago destino
+        if (destinationPaymentMethod != null) {
+            transaction.setDestinationPaymentMethod(destinationPaymentMethod);
+        }
+
+        return transaction;
     }
 
     /**

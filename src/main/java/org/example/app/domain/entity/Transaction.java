@@ -23,7 +23,8 @@ import java.util.Objects;
         @Index(name = "idx_user_transaction", columnList = "id_user"),
         @Index(name = "idx_date_transaction", columnList = "date"),
         @Index(name = "idx_category_transaction", columnList = "id_category"),
-        @Index(name = "idx_payment_method_transaction", columnList = "id_payment_method")
+        @Index(name = "idx_payment_method_transaction", columnList = "id_payment_method"),
+        @Index(name = "idx_destination_payment_method_transaction", columnList = "id_destination_payment_method")
 })
 public class Transaction implements Serializable {
 
@@ -55,6 +56,11 @@ public class Transaction implements Serializable {
     @Getter @Setter
     private PaymentMethod paymentMethod;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_destination_payment_method")
+    @Getter @Setter
+    private PaymentMethod destinationPaymentMethod;
+
     @Column(name = "description", nullable = false)
     @Getter @Setter
     private String description;
@@ -73,7 +79,7 @@ public class Transaction implements Serializable {
 
     @Column(name = "transaction_type", nullable = false)
     @Getter @Setter
-    private String transactionType; // INCOME, EXPENSE
+    private String transactionType; // INCOME, EXPENSE, CREDIT_PAYMENT, TRANSFER
 
     @Column(name = "has_installments")
     @Getter @Setter

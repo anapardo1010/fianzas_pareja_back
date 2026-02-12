@@ -53,4 +53,14 @@ public class TransactionFacade {
     public void delete(Transaction entity) {
         transactionRepository.delete(entity);
     }
+
+    @Transactional(readOnly = false)
+    public Transaction updateTransaction(Transaction transaction) {
+        return transactionRepository.save(transaction);
+    }
+
+    @Transactional(readOnly = false)
+    public void deleteTransaction(Long id) {
+        transactionRepository.deleteById(id);
+    }
 }

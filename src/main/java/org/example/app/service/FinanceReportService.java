@@ -18,6 +18,7 @@ import org.example.app.web.model.UpcomingInstallmentModel;
 import org.example.app.web.model.CreditCardBalanceModel;
 import org.example.app.web.model.CreditCardProportionalPaymentModel;
 import org.example.app.web.model.UserPaymentShare;
+import org.example.app.web.model.PaymentMethodBalanceModel;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -47,10 +48,17 @@ public class FinanceReportService {
     private final CreditCardPeriodPaymentRepository periodPaymentRepository;
 
     /**
-     * Calcula el balance mensual (ingresos vs gastos) para un tenant.
+     * Compatibilidad: firma original sin 'mode'. Usa 'accrual' por defecto.
      */
     public MonthlyBalanceModel getMonthlyBalance(Long tenantId, YearMonth yearMonth) {
-        log.info("Calculando balance mensual para tenant: {} en {}", tenantId, yearMonth);
+        return getMonthlyBalance(tenantId, yearMonth, "accrual");
+    }
+
+    /**
+     * Calcula el balance mensual (ingresos vs gastos) para un tenant.
+     */
+    public MonthlyBalanceModel getMonthlyBalance(Long tenantId, YearMonth yearMonth, String mode) {
+        log.info("Calculando balance mensual (modo={}) para tenant: {} en {}", mode, tenantId, yearMonth);
 
         LocalDate startDate = yearMonth.atDay(1);
         LocalDate endDate = yearMonth.atEndOfMonth();
@@ -62,20 +70,53 @@ public class FinanceReportService {
         int incomeCount = 0;
         int expenseCount = 0;
 
+        boolean accrual = mode == null || "accrual".equalsIgnoreCase(mode);
+
         for (Transaction transaction : transactions) {
-            if ("INCOME".equals(transaction.getTransactionType())) {
+            String type = transaction.getTransactionType();
+
+            // Excluir TRANSFER del balance general (no son ingresos ni gastos reales)
+            if ("TRANSFER".equalsIgnoreCase(type)) {
+                continue;
+            }
+
+            if ("INCOME".equalsIgnoreCase(type)) {
                 totalIncome = totalIncome.add(transaction.getAmount());
                 incomeCount++;
-            } else if ("EXPENSE".equals(transaction.getTransactionType())) {
-                totalExpenses = totalExpenses.add(transaction.getAmount());
-                expenseCount++;
+                continue;
+            }
+
+            if ("EXPENSE".equalsIgnoreCase(type) || "CREDIT_PAYMENT".equalsIgnoreCase(type)) {
+                // Determinar si es compra con tarjeta de crédito
+                String accountType = transaction.getPaymentMethod() != null ? transaction.getPaymentMethod().getAccountType() : null;
+                boolean isCreditCardPurchase = "CREDIT".equalsIgnoreCase(accountType) && "EXPENSE".equalsIgnoreCase(type);
+                boolean isCreditCardPayment = "CREDIT_PAYMENT".equalsIgnoreCase(type);
+
+                if (accrual) {
+                    // Base devengo: contar compras (incluyendo en tarjeta), excluir pagos de tarjeta
+                    if (isCreditCardPayment) {
+                        // excluir del gasto para evitar doble conteo
+                        continue;
+                    }
+                    totalExpenses = totalExpenses.add(transaction.getAmount());
+                    expenseCount++;
+                } else {
+                    // Base caja: contar salida de efectivo
+                    // Excluir compras en tarjeta de crédito (se contabilizan al pagar)
+                    if (isCreditCardPurchase) {
+                        continue;
+                    }
+                    // Incluir pagos de tarjeta y gastos pagados en débito/efectivo
+                    totalExpenses = totalExpenses.add(transaction.getAmount());
+                    expenseCount++;
+                }
             }
         }
 
         BigDecimal netBalance = totalIncome.subtract(totalExpenses);
 
-        log.info("Balance calculado - Ingresos: ${}, Gastos: ${}, Balance neto: ${}",
-                totalIncome, totalExpenses, netBalance);
+        log.info("Balance calculado ({}): Ingresos: ${}, Gastos: ${}, Balance neto: ${}",
+                accrual ? "accrual" : "cash", totalIncome, totalExpenses, netBalance);
 
         return new MonthlyBalanceModel(
             tenantId,
@@ -210,8 +251,8 @@ public class FinanceReportService {
 
         Map<String, Object> summary = new HashMap<>();
 
-        // Balance mensual
-        MonthlyBalanceModel balance = getMonthlyBalance(tenantId, yearMonth);
+        // Balance mensual (por defecto modo accrual)
+        MonthlyBalanceModel balance = getMonthlyBalance(tenantId, yearMonth, "accrual");
         summary.put("monthlyBalance", balance);
 
         // Liquidación proporcional
@@ -537,5 +578,118 @@ public class FinanceReportService {
         // Si hoy es igual o después del día de corte, el último corte fue este mes
 
         return cutDate;
+    }
+
+    /**
+     * Calcula el balance individual de cada método de pago para un tenant.
+     * Útil para saber cuánto efectivo, cuánto en débito, cuánto debo en cada tarjeta.
+     */
+    public List<PaymentMethodBalanceModel> getBalanceByPaymentMethod(Long tenantId, YearMonth yearMonth) {
+        log.info("Calculando balance por método de pago para tenant: {} en {}", tenantId, yearMonth);
+
+        LocalDate startDate = yearMonth.atDay(1);
+        LocalDate endDate = yearMonth.atEndOfMonth();
+
+        List<Transaction> transactions = transactionFacade.findByTenantAndDateRange(tenantId, startDate, endDate);
+
+        // Obtener todos los métodos de pago del tenant
+        List<User> users = userFacade.findByTenantIdAndActive(tenantId);
+        Map<Long, PaymentMethodBalanceModel> balanceMap = new HashMap<>();
+
+        // Inicializar con todos los métodos de pago
+        for (User user : users) {
+            List<PaymentMethod> paymentMethods = paymentMethodFacade.findByUserIdAndActive(user.getId());
+            for (PaymentMethod pm : paymentMethods) {
+                balanceMap.put(pm.getId(), new PaymentMethodBalanceModel(
+                    pm.getId(),
+                    pm.getBankName(),
+                    pm.getAlias(),
+                    pm.getAccountType(),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    0
+                ));
+            }
+        }
+
+        // Procesar transacciones
+        for (Transaction transaction : transactions) {
+            String type = transaction.getTransactionType();
+            BigDecimal amount = transaction.getAmount();
+            Long pmId = transaction.getPaymentMethod() != null ? transaction.getPaymentMethod().getId() : null;
+            Long destPmId = transaction.getDestinationPaymentMethod() != null ? transaction.getDestinationPaymentMethod().getId() : null;
+
+            if (pmId != null && !balanceMap.containsKey(pmId)) {
+                // Si el método de pago no está en el mapa, crear entrada
+                PaymentMethod pm = transaction.getPaymentMethod();
+                balanceMap.put(pmId, new PaymentMethodBalanceModel(
+                    pm.getId(),
+                    pm.getBankName(),
+                    pm.getAlias(),
+                    pm.getAccountType(),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    0
+                ));
+            }
+
+            if ("INCOME".equalsIgnoreCase(type) && pmId != null) {
+                // Ingreso: suma al método de pago
+                PaymentMethodBalanceModel model = balanceMap.get(pmId);
+                model.setTotalIncome(model.getTotalIncome().add(amount));
+                model.setBalance(model.getBalance().add(amount));
+                model.setTransactionCount(model.getTransactionCount() + 1);
+            } else if ("EXPENSE".equalsIgnoreCase(type) && pmId != null) {
+                // Gasto: resta al método de pago
+                PaymentMethodBalanceModel model = balanceMap.get(pmId);
+                model.setTotalExpenses(model.getTotalExpenses().add(amount));
+                model.setBalance(model.getBalance().subtract(amount));
+                model.setTransactionCount(model.getTransactionCount() + 1);
+            } else if ("CREDIT_PAYMENT".equalsIgnoreCase(type) && pmId != null) {
+                // Pago de tarjeta: resta al método de pago origen (débito/efectivo)
+                PaymentMethodBalanceModel model = balanceMap.get(pmId);
+                model.setTotalExpenses(model.getTotalExpenses().add(amount));
+                model.setBalance(model.getBalance().subtract(amount));
+                model.setTransactionCount(model.getTransactionCount() + 1);
+            } else if ("TRANSFER".equalsIgnoreCase(type)) {
+                // Transferencia: resta del origen, suma al destino
+                if (pmId != null) {
+                    PaymentMethodBalanceModel sourceModel = balanceMap.get(pmId);
+                    sourceModel.setTransfersOut(sourceModel.getTransfersOut().add(amount));
+                    sourceModel.setBalance(sourceModel.getBalance().subtract(amount));
+                    sourceModel.setTransactionCount(sourceModel.getTransactionCount() + 1);
+                }
+                if (destPmId != null) {
+                    if (!balanceMap.containsKey(destPmId)) {
+                        PaymentMethod destPm = transaction.getDestinationPaymentMethod();
+                        balanceMap.put(destPmId, new PaymentMethodBalanceModel(
+                            destPm.getId(),
+                            destPm.getBankName(),
+                            destPm.getAlias(),
+                            destPm.getAccountType(),
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            0
+                        ));
+                    }
+                    PaymentMethodBalanceModel destModel = balanceMap.get(destPmId);
+                    destModel.setTransfersIn(destModel.getTransfersIn().add(amount));
+                    destModel.setBalance(destModel.getBalance().add(amount));
+                }
+            }
+        }
+
+        List<PaymentMethodBalanceModel> result = new ArrayList<>(balanceMap.values());
+        log.info("Balance calculado para {} métodos de pago", result.size());
+        return result;
     }
 }

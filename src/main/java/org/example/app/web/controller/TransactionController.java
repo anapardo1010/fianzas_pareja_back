@@ -119,4 +119,39 @@ public class TransactionController {
         List<TransactionModel> transactions = transactionService.findWithInstallmentsByTenant(tenantId);
         return ResponseEntity.ok(ResponseModel.success(transactions, "Transacciones con MSI encontradas"));
     }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Actualizar una transacción", description = "Actualiza una transacción existente por su ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Transacción actualizada correctamente"),
+            @ApiResponse(responseCode = "400", description = "Error por regla de negocio"),
+            @ApiResponse(responseCode = "404", description = "Transacción no encontrada"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "403", description = "Acceso denegado"),
+            @ApiResponse(responseCode = "500", description = "Error interno del servidor")
+    })
+    public ResponseEntity<ResponseModel<TransactionModel>> updateTransaction(
+            @Parameter(description = "ID de la transacción", required = true, example = "1")
+            @PathVariable Long id,
+            @Parameter(description = "Datos de la transacción a actualizar", required = true)
+            @Valid @RequestBody TransactionCreateModel updateModel) {
+        TransactionModel transaction = transactionService.updateTransaction(id, updateModel);
+        return ResponseEntity.ok(ResponseModel.success(transaction, "Transacción actualizada exitosamente"));
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Eliminar una transacción", description = "Elimina una transacción existente por su ID")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Transacción eliminada correctamente"),
+            @ApiResponse(responseCode = "404", description = "Transacción no encontrada"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "403", description = "Acceso denegado"),
+            @ApiResponse(responseCode = "500", description = "Error interno del servidor")
+    })
+    public ResponseEntity<ResponseModel<Void>> deleteTransaction(
+            @Parameter(description = "ID de la transacción", required = true, example = "1")
+            @PathVariable Long id) {
+        transactionService.deleteTransaction(id);
+        return ResponseEntity.ok(ResponseModel.success(null, "Transacción eliminada exitosamente"));
+    }
 }
