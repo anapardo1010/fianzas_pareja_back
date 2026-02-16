@@ -749,4 +749,139 @@ public class FinanceReportService {
         log.info("Balance calculado para {} métodos de pago", result.size());
         return result;
     }
+
+    /**
+     * Calcula pagos proporcionales para métodos de pago que NO son tarjetas de crédito
+     * (efectivo, débito, cuentas) en un rango de fechas.
+     * Si startDate o endDate son null, usa el mes actual.
+     */
+    public List<org.example.app.web.model.PaymentMethodProportionalPaymentModel> getNonCreditPaymentMethodProportionalPayments(
+            Long tenantId, LocalDate startDate, LocalDate endDate) {
+        log.info("Calculando pagos proporcionales (no-credit) para tenant: {} en rango: {} - {}", tenantId, startDate, endDate);
+
+        // Determinar rango por defecto (mes actual) si no se proporcionó
+        LocalDate now = LocalDate.now();
+        if (startDate == null || endDate == null) {
+            YearMonth ym = YearMonth.of(now.getYear(), now.getMonthValue());
+            startDate = ym.atDay(1);
+            endDate = ym.atEndOfMonth();
+        }
+
+        // Obtener usuarios activos
+        List<User> users = userFacade.findByTenantIdAndActive(tenantId);
+
+        List<org.example.app.web.model.PaymentMethodProportionalPaymentModel> result = new ArrayList<>();
+
+        // Recolectar todos los métodos de pago por usuario y filtrar los que NO son CREDIT
+        for (User user : users) {
+            List<PaymentMethod> paymentMethods = paymentMethodFacade.findByUserIdAndActive(user.getId());
+
+            for (PaymentMethod pm : paymentMethods) {
+                if ("CREDIT".equalsIgnoreCase(pm.getAccountType())) {
+                    // Saltar tarjetas de crédito
+                    continue;
+                }
+
+                // Obtener transacciones para este método en el rango
+                List<Transaction> transactions = transactionFacade.findByPaymentMethodAndDateRange(pm.getId(), startDate, endDate);
+
+                // Inicializar sumas por usuario
+                Map<Long, BigDecimal> userTransactionSums = new HashMap<>();
+                for (User u : users) {
+                    userTransactionSums.put(u.getId(), BigDecimal.ZERO);
+                }
+
+                BigDecimal currentBalance = BigDecimal.ZERO;
+
+                for (Transaction tx : transactions) {
+                    BigDecimal amt = tx.getAmount();
+                    String txType = tx.getTransactionType();
+
+                    // INCOME: suma al balance, NO participa en la liquidación proporcional
+                    if ("INCOME".equalsIgnoreCase(txType)) {
+                        currentBalance = currentBalance.add(amt);
+                        continue;
+                    }
+
+                    // EXPENSE: resta del balance y SÍ participa en la división proporcional
+                    if ("EXPENSE".equalsIgnoreCase(txType)) {
+                        currentBalance = currentBalance.subtract(amt);
+
+                        if (tx.getIsShared()) {
+                            // Dividir proporcionalmente entre todos los usuarios según su porcentaje
+                            for (User u : users) {
+                                BigDecimal share = amt.multiply(u.getContributionPercentage())
+                                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                                userTransactionSums.put(u.getId(), userTransactionSums.get(u.getId()).add(share));
+                            }
+                        } else {
+                            // Asignar 100% al usuario que realizó la transacción
+                            Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
+                            if (txUserId != null) {
+                                userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    // CREDIT_PAYMENT: salida de efectivo (pago a tarjeta) -> resta del balance
+                    // NO se divide proporcionalmente aunque la transacción original fuera 'shared'
+                    if ("CREDIT_PAYMENT".equalsIgnoreCase(txType)) {
+                        currentBalance = currentBalance.subtract(amt);
+                        Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
+                        if (txUserId != null) {
+                            userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
+                        }
+                        continue;
+                    }
+
+                    // TRANSFER: representar como salida si el método es el origen; no se divide
+                    if ("TRANSFER".equalsIgnoreCase(txType)) {
+                        currentBalance = currentBalance.subtract(amt);
+                        // No se reparte entre usuarios aquí
+                        continue;
+                    }
+
+                    // Otros tipos: tratarlos como gasto por defecto (restan) y asignarlos al autor
+                    currentBalance = currentBalance.subtract(amt);
+                    Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
+                    if (txUserId != null) {
+                        userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
+                    }
+                }
+
+                // Construir userShares
+                List<org.example.app.web.model.UserPaymentShare> userShares = new ArrayList<>();
+                for (User u : users) {
+                    BigDecimal amountToPay = userTransactionSums.getOrDefault(u.getId(), BigDecimal.ZERO);
+                    // porcentaje aquí representa cuánto paga de lo asignado (100%) — mantener como 100%
+                    BigDecimal payPercent = BigDecimal.valueOf(100);
+                    userShares.add(new org.example.app.web.model.UserPaymentShare(
+                            u.getId(), u.getName(), payPercent, amountToPay
+                    ));
+
+                    log.info("No-credit PM {}: Usuario {} debe pagar ${}", pm.getAlias(), u.getName(), amountToPay);
+                }
+
+                org.example.app.web.model.PaymentMethodProportionalPaymentModel model = new org.example.app.web.model.PaymentMethodProportionalPaymentModel(
+                        pm.getId(),
+                        pm.getUser() != null ? pm.getUser().getId() : null,
+                        pm.getAlias(),
+                        pm.getBankName(),
+                        pm.getAccountType(),
+                        startDate,
+                        endDate,
+                        currentBalance,
+                        transactions.size(),
+                        userShares
+                );
+
+                result.add(model);
+            }
+        }
+
+        log.info("Calculados pagos proporcionales (no-credit) para {} métodos", result.size());
+        return result;
+    }
 }

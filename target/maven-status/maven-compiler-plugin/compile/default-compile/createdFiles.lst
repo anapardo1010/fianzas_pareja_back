@@ -51,6 +51,7 @@ org/example/app/web/model/AuthRequestModel.class
 org/example/app/web/model/TransactionCreateModel.class
 org/example/app/web/model/TenantModel.class
 org/example/app/domain/entity/User.class
+org/example/app/web/model/PaymentMethodProportionalPaymentModel.class
 org/example/app/web/model/MonthlyBalanceModel.class
 org/example/app/web/model/CreditCardBalanceModel.class
 org/example/app/security/UserPrincipal.class

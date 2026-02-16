@@ -15,6 +15,7 @@ import org.example.app.web.model.CreditCardBalanceModel;
 import org.example.app.web.model.MarkPeriodPaidRequest;
 import org.example.app.web.model.CreditCardProportionalPaymentModel;
 import org.example.app.web.model.PaymentMethodBalanceModel;
+import org.example.app.web.model.PaymentMethodProportionalPaymentModel;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -202,6 +203,27 @@ public class FinanceReportController {
 
         List<CreditCardProportionalPaymentModel> payments = financeReportService.getCreditCardProportionalPayments(tenantId);
         return ResponseEntity.ok(ResponseModel.success(payments, "Pagos proporcionales de tarjetas calculados exitosamente"));
+    }
+
+    @GetMapping("/tenant/{tenantId}/non-credit-proportional-payments")
+    @Operation(summary = "Obtener pagos proporcionales para métodos no-crediticios",
+            description = "Calcula cuánto debe pagar cada usuario por cada método que no sea tarjeta de crédito (débito, efectivo, cuentas) en un rango de fechas")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Pagos proporcionales calculados correctamente"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "403", description = "Acceso denegado"),
+            @ApiResponse(responseCode = "500", description = "Error interno del servidor")
+    })
+    public ResponseEntity<ResponseModel<List<PaymentMethodProportionalPaymentModel>>> getNonCreditProportionalPayments(
+            @Parameter(description = "ID del tenant", required = true, example = "1")
+            @PathVariable Long tenantId,
+            @Parameter(description = "Fecha de inicio del rango (opcional)", example = "2026-02-01")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Fecha de fin del rango (opcional)", example = "2026-02-28")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        List<PaymentMethodProportionalPaymentModel> payments = financeReportService.getNonCreditPaymentMethodProportionalPayments(tenantId, startDate, endDate);
+        return ResponseEntity.ok(ResponseModel.success(payments, "Pagos proporcionales (no-credit) calculados exitosamente"));
     }
 
     @GetMapping("/tenant/{tenantId}/balance-by-payment-method")

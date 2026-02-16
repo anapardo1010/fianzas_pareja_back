@@ -58,6 +58,7 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/TenantService.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/security/TenantContextHolder.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/GlobalExceptionHandler.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/PaymentMethodProportionalPaymentModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/FinanceReportService.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/TransactionModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/RegisterInviteRequestModel.java
