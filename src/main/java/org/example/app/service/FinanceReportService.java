@@ -855,8 +855,8 @@ public class FinanceReportService {
                 List<org.example.app.web.model.UserPaymentShare> userShares = new ArrayList<>();
                 for (User u : users) {
                     BigDecimal amountToPay = userTransactionSums.getOrDefault(u.getId(), BigDecimal.ZERO);
-                    // porcentaje aquí representa cuánto paga de lo asignado (100%) — mantener como 100%
-                    BigDecimal payPercent = BigDecimal.valueOf(100);
+                    // porcentaje aquí representa el porcentaje de contribución del usuario (p.ej. 55, 45)
+                    BigDecimal payPercent = u.getContributionPercentage() != null ? u.getContributionPercentage() : BigDecimal.valueOf(100);
                     userShares.add(new org.example.app.web.model.UserPaymentShare(
                             u.getId(), u.getName(), payPercent, amountToPay
                     ));
