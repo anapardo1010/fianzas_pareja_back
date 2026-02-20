@@ -791,63 +791,40 @@ public class FinanceReportService {
                     userTransactionSums.put(u.getId(), BigDecimal.ZERO);
                 }
 
-                BigDecimal currentBalance = BigDecimal.ZERO;
+                BigDecimal totalExpenses = BigDecimal.ZERO;
+                int txCount = 0;
 
                 for (Transaction tx : transactions) {
+                    // Sólo nos interesan EXPENSE que sean gastos reales y que NO sean parte de cuotas/installments
+                    if (!"EXPENSE".equalsIgnoreCase(tx.getTransactionType())) {
+                        // Ignorar INCOME, TRANSFER, CREDIT_PAYMENT, etc.
+                        continue;
+                    }
+
+                    // Ignorar transacciones que tienen installments (p. ej. MSI) — se tratan en el módulo de tarjetas
+                    if (tx.getHasInstallments() != null && tx.getHasInstallments()) {
+                        continue;
+                    }
+
                     BigDecimal amt = tx.getAmount();
-                    String txType = tx.getTransactionType();
 
-                    // INCOME: suma al balance, NO participa en la liquidación proporcional
-                    if ("INCOME".equalsIgnoreCase(txType)) {
-                        currentBalance = currentBalance.add(amt);
-                        continue;
-                    }
+                    // Contabilizar como gasto real
+                    totalExpenses = totalExpenses.add(amt);
+                    txCount++;
 
-                    // EXPENSE: resta del balance y SÍ participa en la división proporcional
-                    if ("EXPENSE".equalsIgnoreCase(txType)) {
-                        currentBalance = currentBalance.subtract(amt);
-
-                        if (tx.getIsShared()) {
-                            // Dividir proporcionalmente entre todos los usuarios según su porcentaje
-                            for (User u : users) {
-                                BigDecimal share = amt.multiply(u.getContributionPercentage())
-                                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                                userTransactionSums.put(u.getId(), userTransactionSums.get(u.getId()).add(share));
-                            }
-                        } else {
-                            // Asignar 100% al usuario que realizó la transacción
-                            Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
-                            if (txUserId != null) {
-                                userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
-                            }
+                    if (tx.getIsShared()) {
+                        // Dividir proporcionalmente entre todos los usuarios según su porcentaje
+                        for (User u : users) {
+                            BigDecimal share = amt.multiply(u.getContributionPercentage())
+                                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                            userTransactionSums.put(u.getId(), userTransactionSums.get(u.getId()).add(share));
                         }
-
-                        continue;
-                    }
-
-                    // CREDIT_PAYMENT: salida de efectivo (pago a tarjeta) -> resta del balance
-                    // NO se divide proporcionalmente aunque la transacción original fuera 'shared'
-                    if ("CREDIT_PAYMENT".equalsIgnoreCase(txType)) {
-                        currentBalance = currentBalance.subtract(amt);
+                    } else {
+                        // Asignar 100% al usuario que realizó la transacción
                         Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
                         if (txUserId != null) {
                             userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
                         }
-                        continue;
-                    }
-
-                    // TRANSFER: representar como salida si el método es el origen; no se divide
-                    if ("TRANSFER".equalsIgnoreCase(txType)) {
-                        currentBalance = currentBalance.subtract(amt);
-                        // No se reparte entre usuarios aquí
-                        continue;
-                    }
-
-                    // Otros tipos: tratarlos como gasto por defecto (restan) y asignarlos al autor
-                    currentBalance = currentBalance.subtract(amt);
-                    Long txUserId = tx.getUser() != null ? tx.getUser().getId() : null;
-                    if (txUserId != null) {
-                        userTransactionSums.put(txUserId, userTransactionSums.get(txUserId).add(amt));
                     }
                 }
 
@@ -855,7 +832,6 @@ public class FinanceReportService {
                 List<org.example.app.web.model.UserPaymentShare> userShares = new ArrayList<>();
                 for (User u : users) {
                     BigDecimal amountToPay = userTransactionSums.getOrDefault(u.getId(), BigDecimal.ZERO);
-                    // porcentaje aquí representa el porcentaje de contribución del usuario (p.ej. 55, 45)
                     BigDecimal payPercent = u.getContributionPercentage() != null ? u.getContributionPercentage() : BigDecimal.valueOf(100);
                     userShares.add(new org.example.app.web.model.UserPaymentShare(
                             u.getId(), u.getName(), payPercent, amountToPay
@@ -872,8 +848,8 @@ public class FinanceReportService {
                         pm.getAccountType(),
                         startDate,
                         endDate,
-                        currentBalance,
-                        transactions.size(),
+                        totalExpenses, // ahora representa el total gastado en el periodo (no balance bancario)
+                        txCount,
                         userShares
                 );
 
