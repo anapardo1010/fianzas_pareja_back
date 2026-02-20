@@ -103,6 +103,36 @@ public class FinanceReportService {
         return new MonthlyBalanceModel(tenantId, yearMonth, totalIncome, totalExpenses, netBalance, incomeCount, expenseCount);
     }
 
+    /**
+     * Devuelve una lista de balances mensuales (últimos {@code months} meses) para el tenant.
+     * El primer elemento de la lista será el mes más antiguo y el último el mes actual.
+     * Mantiene el modo (accrual/cash) que usa la lógica mensual.
+     */
+    public List<MonthlyBalanceModel> getMonthlyBalances(Long tenantId, int months, String mode) {
+        log.info("Calculando balances mensuales para tenant: {} últimos {} meses (modo={})", tenantId, months, mode);
+
+        if (months <= 0) months = 6;
+
+        List<MonthlyBalanceModel> balances = new ArrayList<>();
+        YearMonth current = YearMonth.now();
+
+        // Construir desde el mes más antiguo hasta el actual
+        for (int i = months - 1; i >= 0; i--) {
+            YearMonth ym = current.minusMonths(i);
+            MonthlyBalanceModel m = getMonthlyBalance(tenantId, ym, mode);
+            balances.add(m);
+        }
+
+        return balances;
+    }
+
+    /**
+     * Conveniencia: devuelve los últimos 6 meses en modo 'accrual'.
+     */
+    public List<MonthlyBalanceModel> getMonthlyBalances(Long tenantId) {
+        return getMonthlyBalances(tenantId, 6, "accrual");
+    }
+
     // =========================================================================
     // 2. Balance por método de pago
     // =========================================================================
@@ -576,3 +606,4 @@ public class FinanceReportService {
         }
     }
 }
+

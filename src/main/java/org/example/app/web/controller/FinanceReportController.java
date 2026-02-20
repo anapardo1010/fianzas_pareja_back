@@ -55,6 +55,31 @@ public class FinanceReportController {
         ));
     }
 
+    @GetMapping("/tenant/{tenantId}/monthly-balances")
+    @Operation(
+            summary = "Balances mensuales",
+            description = "Devuelve una lista de balances mensuales para el tenant. Por defecto devuelve los últimos 6 meses. " +
+                    "Se puede especificar el número de meses y el modo (accrual|cash)."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Balances calculados correctamente"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "500", description = "Error interno")
+    })
+    public ResponseEntity<ResponseModel<List<MonthlyBalanceModel>>> getMonthlyBalances(
+            @Parameter(description = "ID del tenant", required = true, example = "1")
+            @PathVariable Long tenantId,
+            @Parameter(description = "Número de meses a devolver (por defecto 6)", example = "6")
+            @RequestParam(required = false, defaultValue = "6") Integer months,
+            @Parameter(description = "Modo de cálculo: accrual | cash", example = "accrual")
+            @RequestParam(required = false, defaultValue = "accrual") String mode) {
+
+        return ResponseEntity.ok(ResponseModel.success(
+                financeReportService.getMonthlyBalances(tenantId, months, mode),
+                "Balances mensuales calculados exitosamente"
+        ));
+    }
+
     @GetMapping("/tenant/{tenantId}/balance-by-payment-method")
     @Operation(
             summary = "Balance por método de pago",
