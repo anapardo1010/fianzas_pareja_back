@@ -44,6 +44,7 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/UserCreateModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/User.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/TransactionCreateModel.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CreditCardPeriodDetailModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/CreditCardPeriodPaymentRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/UserRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/UserFacade.java

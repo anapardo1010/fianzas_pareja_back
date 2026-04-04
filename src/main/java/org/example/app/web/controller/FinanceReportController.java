@@ -153,6 +153,29 @@ public class FinanceReportController {
         return ResponseEntity.ok(ResponseModel.success(null, "Periodo marcado como pagado exitosamente"));
     }
 
+    @GetMapping("/credit-card/{paymentMethodId}/period-detail")
+    @Operation(
+            summary = "Detalle de cargos del periodo activo de una tarjeta",
+            description = "Devuelve el desglose completo de todos los cargos que forman el total " +
+                    "a pagar del periodo activo: transacciones directas y cuotas MSI que caen en el periodo."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Detalle obtenido correctamente"),
+            @ApiResponse(responseCode = "400", description = "El método de pago no es una tarjeta de crédito"),
+            @ApiResponse(responseCode = "404", description = "Método de pago no encontrado"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "500", description = "Error interno")
+    })
+    public ResponseEntity<ResponseModel<CreditCardPeriodDetailModel>> getCreditCardPeriodDetail(
+            @Parameter(description = "ID del método de pago (tarjeta de crédito)", required = true, example = "23")
+            @PathVariable Long paymentMethodId) {
+
+        return ResponseEntity.ok(ResponseModel.success(
+                financeReportService.getCreditCardPeriodDetail(paymentMethodId),
+                "Detalle del periodo obtenido exitosamente"
+        ));
+    }
+
     // -------------------------------------------------------------------------
     // MSI (Meses Sin Intereses)
     // -------------------------------------------------------------------------

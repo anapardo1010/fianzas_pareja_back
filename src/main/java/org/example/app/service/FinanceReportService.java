@@ -627,4 +627,139 @@ public class FinanceReportService {
             return next.withDayOfMonth(Math.min(paymentDay, next.lengthOfMonth()));
         }
     }
+
+    // =========================================================================
+    // 6. Detalle de cargos del periodo activo de una tarjeta
+    // =========================================================================
+
+    /**
+     * Devuelve el desglose completo de todos los cargos que forman el total a pagar
+     * del periodo activo de una tarjeta de crédito:
+     * - Transacciones directas (sin MSI)
+     * - Cuotas MSI que proyectan su fecha dentro del periodo
+     */
+    public CreditCardPeriodDetailModel getCreditCardPeriodDetail(Long paymentMethodId) {
+        log.info("Obteniendo detalle de cargos del periodo activo para tarjeta: {}", paymentMethodId);
+
+        PaymentMethod pm = paymentMethodFacade.findById(paymentMethodId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Método de pago no encontrado: " + paymentMethodId));
+
+        if (!"CREDIT".equalsIgnoreCase(pm.getAccountType()) || pm.getCutDay() == null) {
+            throw new IllegalArgumentException(
+                    "El método de pago " + paymentMethodId + " no es una tarjeta de crédito con día de corte");
+        }
+
+        // Calcular rango del periodo activo (misma lógica que getCreditCardBalances)
+        LocalDate today           = LocalDate.now();
+        LocalDate lastCutDate     = calculateLastCutDate(today, pm.getCutDay());
+        LocalDate previousCutDate = lastCutDate.minusMonths(1);
+        LocalDate nextCutDate     = lastCutDate.plusMonths(1);
+
+        String lastPeriodId   = previousCutDate.plusDays(1) + "_" + lastCutDate;
+        boolean lastPeriodPaid = periodPaymentRepository
+                .existsByPaymentMethodIdAndPeriodId(pm.getId(), lastPeriodId);
+
+        LocalDate rangeStart, rangeEnd, paymentDate;
+        String periodId, status, paymentStatus;
+
+        if (lastPeriodPaid) {
+            rangeStart  = lastCutDate.plusDays(1);
+            rangeEnd    = nextCutDate;
+            paymentDate = calculatePaymentDate(nextCutDate, pm.getPaymentDay());
+            periodId    = rangeStart + "_" + rangeEnd;
+        } else {
+            rangeStart  = previousCutDate.plusDays(1);
+            rangeEnd    = lastCutDate;
+            paymentDate = calculatePaymentDate(lastCutDate, pm.getPaymentDay());
+            periodId    = lastPeriodId;
+        }
+
+        boolean isPaid = periodPaymentRepository.existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
+
+        if (isPaid) {
+            paymentStatus = "PAID";
+        } else if (today.isAfter(paymentDate)) {
+            paymentStatus = "OVERDUE";
+        } else {
+            paymentStatus = "PENDING";
+        }
+
+        if (today.isBefore(rangeEnd)) {
+            status = "PENDING_CUT";
+        } else if (!today.isAfter(paymentDate)) {
+            status = "PENDING_PAYMENT";
+        } else {
+            status = "OVERDUE";
+        }
+
+        // Transacciones del periodo — excluir las de MSI (se cuentan por cuotas)
+        List<Transaction> transactions = transactionFacade
+                .findByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
+
+        List<CreditCardPeriodDetailModel.ChargeItem> directCharges = transactions.stream()
+                .filter(tx -> !Boolean.TRUE.equals(tx.getHasInstallments()))
+                .map(tx -> new CreditCardPeriodDetailModel.ChargeItem(
+                        tx.getId(),
+                        tx.getDescription(),
+                        tx.getAmount(),
+                        tx.getDate(),
+                        tx.getIsShared(),
+                        tx.getCategory() != null ? tx.getCategory().getName() : null,
+                        tx.getUser() != null ? tx.getUser().getId() : null,
+                        tx.getUser() != null ? tx.getUser().getName() : null
+                ))
+                .collect(Collectors.toList());
+
+        // Cuotas MSI que caen en el periodo
+        List<Installment> installments = installmentFacade
+                .findPendingByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
+
+        List<CreditCardPeriodDetailModel.InstallmentItem> installmentCharges = installments.stream()
+                .map(inst -> new CreditCardPeriodDetailModel.InstallmentItem(
+                        inst.getId(),
+                        inst.getTransaction().getId(),
+                        inst.getTransaction().getDescription(),
+                        inst.getInstallmentNumber(),
+                        inst.getTransaction().getTotalInstallments(),
+                        inst.getInstallmentAmount(),
+                        inst.getTransaction().getAmount(),
+                        inst.getProjectedDate(),
+                        inst.getTransaction().getIsShared(),
+                        inst.getTransaction().getUser() != null ? inst.getTransaction().getUser().getId() : null,
+                        inst.getTransaction().getUser() != null ? inst.getTransaction().getUser().getName() : null
+                ))
+                .collect(Collectors.toList());
+
+        BigDecimal directTotal = directCharges.stream()
+                .map(CreditCardPeriodDetailModel.ChargeItem::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal installmentsTotal = installmentCharges.stream()
+                .map(CreditCardPeriodDetailModel.InstallmentItem::getInstallmentAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        log.info("Tarjeta {}: periodo {} a {}, {} cargos directos (${}) + {} cuotas MSI (${}), total=${}",
+                pm.getBankName(), rangeStart, rangeEnd,
+                directCharges.size(), directTotal,
+                installmentCharges.size(), installmentsTotal,
+                directTotal.add(installmentsTotal));
+
+        return new CreditCardPeriodDetailModel(
+                pm.getId(),
+                pm.getAlias(),
+                pm.getBankName(),
+                rangeStart,
+                rangeEnd,
+                paymentDate,
+                periodId,
+                status,
+                paymentStatus,
+                directTotal,
+                installmentsTotal,
+                directTotal.add(installmentsTotal),
+                directCharges,
+                installmentCharges
+        );
+    }
 }
