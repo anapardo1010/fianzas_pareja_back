@@ -233,12 +233,10 @@ public class FinanceReportService {
                     continue;
                 }
 
-                // Fechas del ciclo
                 LocalDate lastCutDate     = calculateLastCutDate(today, pm.getCutDay());
                 LocalDate previousCutDate = lastCutDate.minusMonths(1);
                 LocalDate nextCutDate     = lastCutDate.plusMonths(1);
 
-                // Determinar si el periodo del último corte ya está pagado
                 String lastPeriodId = previousCutDate.plusDays(1) + "_" + lastCutDate;
                 boolean lastPeriodPaid = periodPaymentRepository
                         .existsByPaymentMethodIdAndPeriodId(pm.getId(), lastPeriodId);
@@ -248,16 +246,14 @@ public class FinanceReportService {
                 boolean isPaid;
 
                 if (lastPeriodPaid) {
-                    // Mostrar el SIGUIENTE periodo
-                    rangeStart          = lastCutDate.plusDays(1);
-                    rangeEnd            = nextCutDate;
-                    displayCutDate      = nextCutDate;
-                    currentPaymentDate  = calculatePaymentDate(nextCutDate, pm.getPaymentDay());
-                    periodId            = rangeStart + "_" + rangeEnd;
-                    isPaid              = periodPaymentRepository
+                    rangeStart         = lastCutDate.plusDays(1);
+                    rangeEnd           = nextCutDate;
+                    displayCutDate     = nextCutDate;
+                    currentPaymentDate = calculatePaymentDate(nextCutDate, pm.getPaymentDay());
+                    periodId           = rangeStart + "_" + rangeEnd;
+                    isPaid             = periodPaymentRepository
                             .existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
                 } else {
-                    // Mostrar el periodo PENDIENTE
                     rangeStart         = previousCutDate.plusDays(1);
                     rangeEnd           = lastCutDate;
                     displayCutDate     = lastCutDate;
@@ -266,11 +262,17 @@ public class FinanceReportService {
                     isPaid             = false;
                 }
 
-                // Transacciones y cuotas del periodo
+                log.info("Tarjeta {}: today={}, displayCutDate={}, nextCutDate={}, currentPaymentDate={}, daysUntilCut={}, daysUntilPayment={}, isPaid={}",
+                        pm.getBankName(), today, displayCutDate, nextCutDate, currentPaymentDate,
+                        ChronoUnit.DAYS.between(today, displayCutDate),
+                        ChronoUnit.DAYS.between(today, currentPaymentDate), isPaid);
+
                 List<Transaction> transactions = transactionFacade
                         .findByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
 
+                // Solo sumar transacciones directas (sin MSI). Las de MSI se cuentan vía cuotas.
                 BigDecimal currentBalance = transactions.stream()
+                        .filter(tx -> !Boolean.TRUE.equals(tx.getHasInstallments()))
                         .map(Transaction::getAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -283,7 +285,6 @@ public class FinanceReportService {
 
                 BigDecimal totalDue = currentBalance.add(pendingInstallments);
 
-                // Estado de pago
                 String paymentStatus;
                 if (isPaid) {
                     paymentStatus = "PAID";
@@ -293,7 +294,6 @@ public class FinanceReportService {
                     paymentStatus = "PENDING";
                 }
 
-                // Estado del ciclo
                 String status;
                 if (today.isBefore(displayCutDate)) {
                     status = "PENDING_CUT";
@@ -305,6 +305,9 @@ public class FinanceReportService {
 
                 int daysUntilCut     = (int) ChronoUnit.DAYS.between(today, displayCutDate);
                 int daysUntilPayment = (int) ChronoUnit.DAYS.between(today, currentPaymentDate);
+
+                log.info("Tarjeta {}: Saldo directo ${}, Cuotas MSI ${}, Total ${}, Status: {}, PaymentStatus: {}, Pagado: {}, PeriodId: {}",
+                        pm.getBankName(), currentBalance, pendingInstallments, totalDue, status, paymentStatus, isPaid, periodId);
 
                 balances.add(new CreditCardBalanceModel(
                         pm.getId(),
@@ -355,7 +358,7 @@ public class FinanceReportService {
         List<CreditCardProportionalPaymentModel> result = new ArrayList<>();
 
         for (CreditCardBalanceModel card : getCreditCardBalances(tenantId)) {
-            String[] parts    = card.getPeriodId().split("_");
+            String[] parts       = card.getPeriodId().split("_");
             LocalDate rangeStart = LocalDate.parse(parts[0]);
             LocalDate rangeEnd   = LocalDate.parse(parts[1]);
 
@@ -368,11 +371,24 @@ public class FinanceReportService {
             Map<Long, BigDecimal> txSums          = buildZeroMap(users);
             Map<Long, BigDecimal> installmentSums = buildZeroMap(users);
 
+            // Solo distribuir transacciones directas (sin MSI).
+            // Las que tienen MSI se distribuyen por sus cuotas individuales abajo.
             for (Transaction tx : transactions) {
+                if (Boolean.TRUE.equals(tx.getHasInstallments())) {
+                    log.debug("Tarjeta {}: omitiendo tx MSI id={} '{}' ${} (se contabiliza por cuotas)",
+                            card.getBankName(), tx.getId(), tx.getDescription(), tx.getAmount());
+                    continue;
+                }
+                log.debug("Tarjeta {}: distribuyendo tx id={} '{}' ${} shared={}",
+                        card.getBankName(), tx.getId(), tx.getDescription(), tx.getAmount(), tx.getIsShared());
                 distributeAmount(tx.getAmount(), tx.getIsShared(), tx.getUser().getId(), users, txSums);
             }
 
             for (Installment inst : installments) {
+                log.debug("Tarjeta {}: distribuyendo cuota id={} txId={} '{}' ${} shared={}",
+                        card.getBankName(), inst.getId(), inst.getTransaction().getId(),
+                        inst.getTransaction().getDescription(), inst.getInstallmentAmount(),
+                        inst.getTransaction().getIsShared());
                 distributeAmount(
                         inst.getInstallmentAmount(),
                         inst.getTransaction().getIsShared(),
@@ -384,8 +400,14 @@ public class FinanceReportService {
 
             List<UserPaymentShare> userShares = users.stream()
                     .map(u -> {
-                        BigDecimal amount = txSums.get(u.getId()).add(installmentSums.get(u.getId()));
-                        return new UserPaymentShare(u.getId(), u.getName(), BigDecimal.valueOf(100), amount);
+                        BigDecimal txPart   = txSums.get(u.getId());
+                        BigDecimal instPart = installmentSums.get(u.getId());
+                        BigDecimal total    = txPart.add(instPart);
+                        BigDecimal pct      = u.getContributionPercentage() != null
+                                ? u.getContributionPercentage() : BigDecimal.valueOf(100);
+                        log.info("Tarjeta {}: Usuario {} debe pagar ${} ({}% de su deuda: transacciones ${} + cuotas ${})",
+                                card.getBankName(), u.getName(), total, pct, txPart, instPart);
+                        return new UserPaymentShare(u.getId(), u.getName(), pct, total);
                     })
                     .collect(Collectors.toList());
 
@@ -606,4 +628,3 @@ public class FinanceReportService {
         }
     }
 }
-

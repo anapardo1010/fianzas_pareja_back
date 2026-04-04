@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -17,10 +18,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-/**
- * Servicio para la gestión de Transactions (operaciones core).
- * Implementa la lógica compleja de gastos compartidos y MSI.
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -33,47 +30,37 @@ public class TransactionService {
     private final CategoryFacade categoryFacade;
     private final PaymentMethodFacade paymentMethodFacade;
 
-    /**
-     * Crea una nueva transacción con lógica de gastos compartidos y MSI.
-     * Esta es la operación core del sistema.
-     */
     @Transactional
     public TransactionModel createTransaction(TransactionCreateModel createModel) {
-        log.info("Creando transacción: {} por $${} para tenant: {}",
+        log.info("Creando transacción: {} por ${} para tenant: {}",
                 createModel.getDescription(), createModel.getAmount(), createModel.getTenantId());
 
-        // Validar entidades relacionadas
-        Tenant tenant = validateAndGetTenant(createModel.getTenantId());
-        User user = validateAndGetUser(createModel.getUserId());
-        Category category = validateAndGetCategory(createModel.getCategoryId());
+        Tenant tenant               = validateAndGetTenant(createModel.getTenantId());
+        User user                   = validateAndGetUser(createModel.getUserId());
+        Category category           = validateAndGetCategory(createModel.getCategoryId());
         PaymentMethod paymentMethod = validateAndGetPaymentMethod(createModel.getPaymentMethodId());
 
-        // Validar que el usuario pertenece al tenant
         validateUserBelongsToTenant(user, tenant);
 
-        // Validar lógica de transferencias
         PaymentMethod destinationPaymentMethod = null;
         if ("TRANSFER".equalsIgnoreCase(createModel.getTransactionType())) {
             validateTransferLogic(createModel, paymentMethod);
             destinationPaymentMethod = validateAndGetPaymentMethod(createModel.getDestinationPaymentMethodId());
         }
 
-        // Validar lógica de MSI
         validateInstallmentLogic(createModel);
 
-        // Crear la transacción principal
-        Transaction transaction = createTransactionEntity(createModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
+        Transaction transaction = createTransactionEntity(
+                createModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
         Transaction savedTransaction = transactionFacade.save(transaction);
         log.info("Transacción creada con ID: {}", savedTransaction.getId());
 
-        // Si tiene MSI, crear las cuotas automáticamente
         if (Boolean.TRUE.equals(createModel.getHasInstallments())) {
             createInstallments(savedTransaction, createModel.getTotalInstallments());
             log.info("Creadas {} cuotas MSI para transacción: {}",
                     createModel.getTotalInstallments(), savedTransaction.getId());
         }
 
-        // Si es gasto compartido, loggear información de cálculo proporcional
         if (Boolean.TRUE.equals(createModel.getIsShared()) && "EXPENSE".equals(createModel.getTransactionType())) {
             logProportionalCalculation(tenant, createModel.getAmount());
         }
@@ -81,9 +68,6 @@ public class TransactionService {
         return TransactionModel.FN_ENTITY_TO_MODEL.apply(savedTransaction);
     }
 
-    /**
-     * Busca transacciones por tenant y rango de fechas.
-     */
     public List<TransactionModel> findByTenantAndDateRange(Long tenantId, LocalDate startDate, LocalDate endDate) {
         log.debug("Buscando transacciones para tenant: {} entre {} y {}", tenantId, startDate, endDate);
         return transactionFacade.findByTenantAndDateRange(tenantId, startDate, endDate)
@@ -92,9 +76,6 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Busca transacciones compartidas por tenant y fecha.
-     */
     public List<TransactionModel> findSharedByTenantAndDateRange(Long tenantId, LocalDate startDate, LocalDate endDate) {
         log.debug("Buscando transacciones compartidas para tenant: {} entre {} y {}", tenantId, startDate, endDate);
         return transactionFacade.findSharedByTenantAndDateRange(tenantId, startDate, endDate)
@@ -103,18 +84,12 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Busca una transacción por ID.
-     */
     public Optional<TransactionModel> findById(Long id) {
         log.debug("Buscando transacción por ID: {}", id);
         return transactionFacade.findById(id)
                 .map(TransactionModel.FN_ENTITY_TO_MODEL);
     }
 
-    /**
-     * Busca transacciones con MSI por tenant.
-     */
     public List<TransactionModel> findWithInstallmentsByTenant(Long tenantId) {
         log.debug("Buscando transacciones con MSI para tenant: {}", tenantId);
         return transactionFacade.findWithInstallmentsByTenant(tenantId)
@@ -123,44 +98,45 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Actualiza una transacción existente.
-     */
     @Transactional
     public TransactionModel updateTransaction(Long id, TransactionCreateModel updateModel) {
         log.info("Actualizando transacción ID: {}", id);
-        // Validar existencia
-        Transaction existing = transactionFacade.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada: " + id));
-        // Validar entidades relacionadas
-        Tenant tenant = validateAndGetTenant(updateModel.getTenantId());
-        User user = validateAndGetUser(updateModel.getUserId());
-        Category category = validateAndGetCategory(updateModel.getCategoryId());
+
+        transactionFacade.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada: " + id));
+
+        Tenant tenant               = validateAndGetTenant(updateModel.getTenantId());
+        User user                   = validateAndGetUser(updateModel.getUserId());
+        Category category           = validateAndGetCategory(updateModel.getCategoryId());
         PaymentMethod paymentMethod = validateAndGetPaymentMethod(updateModel.getPaymentMethodId());
+
         validateUserBelongsToTenant(user, tenant);
+
         PaymentMethod destinationPaymentMethod = null;
         if ("TRANSFER".equalsIgnoreCase(updateModel.getTransactionType())) {
             validateTransferLogic(updateModel, paymentMethod);
             destinationPaymentMethod = validateAndGetPaymentMethod(updateModel.getDestinationPaymentMethodId());
         }
+
         validateInstallmentLogic(updateModel);
-        // Crear entidad actualizada
-        Transaction updatedTransaction = createTransactionEntity(updateModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
+
+        Transaction updatedTransaction = createTransactionEntity(
+                updateModel, tenant, user, category, paymentMethod, destinationPaymentMethod);
         updatedTransaction.setId(id);
+
         Transaction result = transactionFacade.updateTransaction(updatedTransaction);
         return TransactionModel.FN_ENTITY_TO_MODEL.apply(result);
     }
 
-    /**
-     * Elimina una transacción existente.
-     */
     @Transactional
     public void deleteTransaction(Long id) {
         log.info("Eliminando transacción ID: {}", id);
         transactionFacade.deleteTransaction(id);
     }
 
-    // Métodos privados de validación y lógica de negocio
+    // =========================================================================
+    // Validaciones
+    // =========================================================================
 
     private Tenant validateAndGetTenant(Long tenantId) {
         return tenantFacade.findById(tenantId)
@@ -205,50 +181,45 @@ public class TransactionService {
     }
 
     private void validateTransferLogic(TransactionCreateModel createModel, PaymentMethod sourcePaymentMethod) {
-        // Validar que el monto sea positivo
         if (createModel.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto de la transferencia debe ser positivo");
         }
-
-        // Validar que se haya especificado método de pago destino
         if (createModel.getDestinationPaymentMethodId() == null) {
             throw new IllegalArgumentException("Debe especificar el método de pago destino para transferencias");
         }
-
-        // Validar que origen y destino sean diferentes
         if (createModel.getPaymentMethodId().equals(createModel.getDestinationPaymentMethodId())) {
             throw new IllegalArgumentException("El método de pago origen y destino deben ser diferentes");
         }
-
-        // Las transferencias no pueden tener MSI
         if (Boolean.TRUE.equals(createModel.getHasInstallments())) {
             throw new IllegalArgumentException("Las transferencias no pueden tener cuotas MSI");
         }
-
         log.info("Transferencia válida: ${} desde {} hacia método de pago ID {}",
                 createModel.getAmount(),
                 sourcePaymentMethod != null ? sourcePaymentMethod.getBankName() : "desconocido",
                 createModel.getDestinationPaymentMethodId());
     }
 
+    // =========================================================================
+    // Construcción de entidad
+    // =========================================================================
+
     private Transaction createTransactionEntity(TransactionCreateModel createModel, Tenant tenant,
-                                               User user, Category category, PaymentMethod paymentMethod,
-                                               PaymentMethod destinationPaymentMethod) {
+                                                User user, Category category, PaymentMethod paymentMethod,
+                                                PaymentMethod destinationPaymentMethod) {
         Transaction transaction = new Transaction(
-            tenant,
-            user,
-            category,
-            paymentMethod,
-            createModel.getDescription(),
-            createModel.getAmount(),
-            createModel.getDate(),
-            createModel.getIsShared(),
-            createModel.getTransactionType(),
-            createModel.getHasInstallments(),
-            createModel.getTotalInstallments()
+                tenant,
+                user,
+                category,
+                paymentMethod,
+                createModel.getDescription(),
+                createModel.getAmount(),
+                createModel.getDate(),
+                createModel.getIsShared(),
+                createModel.getTransactionType(),
+                createModel.getHasInstallments(),
+                createModel.getTotalInstallments()
         );
 
-        // Si es transferencia, asignar el método de pago destino
         if (destinationPaymentMethod != null) {
             transaction.setDestinationPaymentMethod(destinationPaymentMethod);
         }
@@ -256,73 +227,105 @@ public class TransactionService {
         return transaction;
     }
 
+    // =========================================================================
+    // Lógica MSI
+    // =========================================================================
+
     /**
-     * Crea las cuotas MSI automáticamente basadas en el día de corte de la tarjeta.
+     * Crea las cuotas MSI automáticamente.
+     *
+     * Regla: la cuota 1 cae en la fecha de PAGO del ciclo donde ocurrió la compra.
+     * Las siguientes cuotas caen en los ciclos subsecuentes.
+     *
+     * Ejemplo Ualá (cutDay=2, paymentDay=21, compra 22 enero):
+     *   22 enero > corte 2 enero → siguiente corte = 2 febrero
+     *   Cuota 1 → pago del ciclo 2/feb = 21/feb
+     *   Cuota 2 → pago del ciclo 2/mar = 21/mar
+     *
+     * Ejemplo Didi Card (cutDay=21, paymentDay=5, compra 22 enero):
+     *   22 enero > corte 21 enero → siguiente corte = 21 febrero
+     *   Cuota 1 → pago del ciclo 21/feb = 5/mar
+     *   Cuota 2 → pago del ciclo 21/mar = 5/abr
      */
     private void createInstallments(Transaction transaction, Integer totalInstallments) {
         List<Installment> installments = new ArrayList<>();
-        BigDecimal installmentAmount = transaction.getAmount().divide(
-            BigDecimal.valueOf(totalInstallments), 2, BigDecimal.ROUND_HALF_UP);
 
-        // Obtener día de corte de la tarjeta (si aplica)
-        Integer cutDay = transaction.getPaymentMethod() != null ?
-            transaction.getPaymentMethod().getCutDay() : null;
+        BigDecimal installmentAmount = transaction.getAmount()
+                .divide(BigDecimal.valueOf(totalInstallments), 2, RoundingMode.HALF_UP);
+
+        PaymentMethod pm   = transaction.getPaymentMethod();
+        Integer cutDay     = pm != null ? pm.getCutDay()     : null;
+        Integer paymentDay = pm != null ? pm.getPaymentDay() : null;
+
+        // Calcular el corte al que pertenece la compra (primer corte >= fecha de compra)
+        LocalDate firstCutDate = resolveFirstCutDate(transaction.getDate(), cutDay);
 
         for (int i = 1; i <= totalInstallments; i++) {
-            LocalDate projectedDate = calculateInstallmentDate(transaction.getDate(), i, cutDay);
+            // Cuota i → cae en el ciclo (i-1) cortes después del primero
+            LocalDate targetCutDate = firstCutDate.plusMonths(i - 1)
+                    .withDayOfMonth(cutDay != null
+                            ? Math.min(cutDay, firstCutDate.plusMonths(i - 1).lengthOfMonth())
+                            : firstCutDate.getDayOfMonth());
 
-            Installment installment = new Installment(
-                transaction,
-                i,
-                installmentAmount,
-                projectedDate,
-                false // isPaid = false por defecto
-            );
-            installments.add(installment);
+            LocalDate projectedDate = calculatePaymentDateFromCut(targetCutDate, paymentDay);
+
+            installments.add(new Installment(transaction, i, installmentAmount, projectedDate, false));
         }
 
         installmentFacade.saveAll(installments);
-        log.debug("Creadas {} cuotas para transacción {}", totalInstallments, transaction.getId());
+        log.debug("Creadas {} cuotas para transacción {} (primera fecha: {})",
+                totalInstallments, transaction.getId(), installments.get(0).getProjectedDate());
     }
 
     /**
-     * Calcula la fecha proyectada de una cuota considerando el día de corte.
+     * Encuentra el primer corte igual o posterior a la fecha de compra.
+     * Si cutDay es null, usa la fecha de compra como base.
      */
-    private LocalDate calculateInstallmentDate(LocalDate transactionDate, int installmentNumber, Integer cutDay) {
-        if (cutDay == null) {
-            // Si no hay día de corte, simplemente sumar meses
-            return transactionDate.plusMonths(installmentNumber);
-        }
+    private LocalDate resolveFirstCutDate(LocalDate transactionDate, Integer cutDay) {
+        if (cutDay == null) return transactionDate;
 
-        // Lógica más compleja considerando día de corte de tarjeta
-        LocalDate baseDate = transactionDate.plusMonths(installmentNumber);
+        // Corte de este mes
+        LocalDate cutThisMonth = transactionDate.withDayOfMonth(
+                Math.min(cutDay, transactionDate.lengthOfMonth()));
 
-        // Si el día del mes es mayor al día de corte, se va al siguiente mes
-        if (transactionDate.getDayOfMonth() > cutDay) {
-            baseDate = baseDate.plusMonths(1);
-        }
-
-        // Establecer el día de corte como día de proyección
-        try {
-            return baseDate.withDayOfMonth(cutDay);
-        } catch (Exception e) {
-            // Si el día no existe en ese mes (ej: 31 en febrero), usar último día del mes
-            return baseDate.withDayOfMonth(baseDate.lengthOfMonth());
+        // Si la compra ocurrió antes o en el día del corte → el corte es este mes
+        // Si la compra ocurrió después del corte → el corte es el mes siguiente
+        if (!transactionDate.isAfter(cutThisMonth)) {
+            return cutThisMonth;
+        } else {
+            LocalDate nextMonth = transactionDate.plusMonths(1);
+            return nextMonth.withDayOfMonth(Math.min(cutDay, nextMonth.lengthOfMonth()));
         }
     }
 
     /**
-     * Loggea información sobre el cálculo proporcional para gastos compartidos.
+     * Calcula la fecha de pago a partir de la fecha de corte y el día de pago.
+     * - paymentDay > cutDay  → mismo mes del corte
+     * - paymentDay <= cutDay → mes siguiente al corte
+     * - paymentDay null      → 20 días después del corte
      */
+    private LocalDate calculatePaymentDateFromCut(LocalDate cutDate, Integer paymentDay) {
+        if (paymentDay == null) return cutDate.plusDays(20);
+
+        if (paymentDay > cutDate.getDayOfMonth()) {
+            return cutDate.withDayOfMonth(Math.min(paymentDay, cutDate.lengthOfMonth()));
+        } else {
+            LocalDate next = cutDate.plusMonths(1);
+            return next.withDayOfMonth(Math.min(paymentDay, next.lengthOfMonth()));
+        }
+    }
+
+    // =========================================================================
+    // Logging
+    // =========================================================================
+
     private void logProportionalCalculation(Tenant tenant, BigDecimal amount) {
         List<User> tenantUsers = userFacade.findByTenantIdAndActive(tenant.getId());
-
         log.info("=== CÁLCULO PROPORCIONAL PARA GASTO COMPARTIDO ===");
         log.info("Monto total: ${}", amount);
-
         for (User user : tenantUsers) {
             BigDecimal userAmount = amount.multiply(user.getContributionPercentage())
-                    .divide(BigDecimal.valueOf(100), 2, BigDecimal.ROUND_HALF_UP);
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
             log.info("Usuario {}: {}% = ${}", user.getName(), user.getContributionPercentage(), userAmount);
         }
         log.info("=== FIN CÁLCULO PROPORCIONAL ===");
