@@ -120,6 +120,39 @@ public class TransactionController {
         return ResponseEntity.ok(ResponseModel.success(transactions, "Transacciones con MSI encontradas"));
     }
 
+    @GetMapping("/tenant/{tenantId}/filter")
+    @Operation(
+            summary = "Filtrar transacciones por tipo y/o método de pago",
+            description = """
+                    Devuelve las transacciones de un tenant aplicando filtros opcionales:
+                    - startDate / endDate: rango de fechas (si se omiten, no se filtra por fecha)
+                    - transactionType: INCOME | EXPENSE | CREDIT_PAYMENT | TRANSFER (si se omite, trae todos los tipos)
+                    - paymentMethodId: ID del método de pago (si se omite, trae todos los métodos)
+                    Los resultados se ordenan por fecha descendente.
+                    """
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Transacciones encontradas correctamente"),
+            @ApiResponse(responseCode = "401", description = "No autorizado"),
+            @ApiResponse(responseCode = "500", description = "Error interno del servidor")
+    })
+    public ResponseEntity<ResponseModel<List<TransactionModel>>> getTransactionsByFilters(
+            @Parameter(description = "ID del tenant", required = true, example = "1")
+            @PathVariable Long tenantId,
+            @Parameter(description = "Fecha de inicio (opcional)", example = "2026-02-01")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "Fecha de fin (opcional)", example = "2026-02-28")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Tipo de transacción (opcional): INCOME, EXPENSE, CREDIT_PAYMENT, TRANSFER", example = "EXPENSE")
+            @RequestParam(required = false) String transactionType,
+            @Parameter(description = "ID del método de pago (opcional)", example = "3")
+            @RequestParam(required = false) Long paymentMethodId) {
+
+        List<TransactionModel> transactions =
+                transactionService.findByFilters(tenantId, startDate, endDate, transactionType, paymentMethodId);
+        return ResponseEntity.ok(ResponseModel.success(transactions, "Transacciones encontradas"));
+    }
+
     @PutMapping("/{id}")
     @Operation(summary = "Actualizar una transacción", description = "Actualiza una transacción existente por su ID")
     @ApiResponses(value = {

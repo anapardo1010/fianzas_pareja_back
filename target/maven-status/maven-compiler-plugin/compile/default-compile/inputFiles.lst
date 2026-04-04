@@ -5,9 +5,11 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CategoryModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/CategoryController.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/config/SecurityConfig.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/CreditCardPayment.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CreditCardBalanceModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/PaymentMethodBalanceModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/CategoryService.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/CreditCardPaymentController.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/PaymentMethodCreateModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/UserController.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/PaymentMethodRepository.java
@@ -18,6 +20,7 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/InstallmentRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/PaymentMethodController.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/security/JwtService.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CreditCardPaymentItemRequest.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/RegisterRequestModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/Tenant.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/security/UserPrincipal.java
@@ -48,8 +51,10 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/CreditCardPeriodPaymentRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/UserRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/UserFacade.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/CreditCardPaymentRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/ProportionalSettlementModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/TransactionFacade.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CreditCardPaymentItemResponse.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/TenantCreateModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/TenantRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/Installment.java
@@ -58,7 +63,9 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/TenantFacade.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/TenantService.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/security/TenantContextHolder.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/facade/CreditCardPaymentFacade.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/GlobalExceptionHandler.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/CreditCardPaymentRequest.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/PaymentMethodProportionalPaymentModel.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/FinanceReportService.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/TransactionModel.java
@@ -67,4 +74,5 @@
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/repository/TransactionRepository.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/domain/entity/PaymentMethod.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/model/PaymentMethodModel.java
+/Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/service/CreditCardPaymentService.java
 /Users/anagabrielapardo/Punto de venta/Repositorios/finanzas/src/main/java/org/example/app/web/controller/AuthController.java

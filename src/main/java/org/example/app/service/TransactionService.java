@@ -76,6 +76,16 @@ public class TransactionService {
                 .collect(Collectors.toList());
     }
 
+    public List<TransactionModel> findByFilters(Long tenantId, LocalDate startDate, LocalDate endDate,
+                                                String transactionType, Long paymentMethodId) {
+        log.debug("Buscando transacciones con filtros para tenant: {} | fechas: {} - {} | tipo: {} | pm: {}",
+                tenantId, startDate, endDate, transactionType, paymentMethodId);
+        return transactionFacade.findByFilters(tenantId, startDate, endDate, transactionType, paymentMethodId)
+                .stream()
+                .map(TransactionModel.FN_ENTITY_TO_MODEL)
+                .collect(Collectors.toList());
+    }
+
     public List<TransactionModel> findSharedByTenantAndDateRange(Long tenantId, LocalDate startDate, LocalDate endDate) {
         log.debug("Buscando transacciones compartidas para tenant: {} entre {} y {}", tenantId, startDate, endDate);
         return transactionFacade.findSharedByTenantAndDateRange(tenantId, startDate, endDate)

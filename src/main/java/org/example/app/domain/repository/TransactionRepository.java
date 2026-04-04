@@ -2,6 +2,8 @@ package org.example.app.domain.repository;
 
 import org.example.app.domain.entity.Transaction;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -52,4 +54,24 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      * Elimina una transacción por su ID.
      */
     void deleteById(Long id);
+
+    /**
+     * Filtro flexible por tenant con parámetros opcionales.
+     * Se usan casteos explícitos para compatibilidad con PostgreSQL.
+     */
+    @Query(value = """
+            SELECT * FROM transaction
+            WHERE id_tenant = :tenantId
+            AND (CAST(:startDate AS date) IS NULL OR date >= CAST(:startDate AS date))
+            AND (CAST(:endDate AS date) IS NULL OR date <= CAST(:endDate AS date))
+            AND (CAST(:transactionType AS text) IS NULL OR LOWER(transaction_type) = LOWER(CAST(:transactionType AS text)))
+            AND (CAST(:paymentMethodId AS bigint) IS NULL OR id_payment_method = CAST(:paymentMethodId AS bigint))
+            ORDER BY date DESC, created_at DESC
+            """, nativeQuery = true)
+    List<Transaction> findByFilters(
+            @Param("tenantId")        Long tenantId,
+            @Param("startDate")       LocalDate startDate,
+            @Param("endDate")         LocalDate endDate,
+            @Param("transactionType") String transactionType,
+            @Param("paymentMethodId") Long paymentMethodId);
 }

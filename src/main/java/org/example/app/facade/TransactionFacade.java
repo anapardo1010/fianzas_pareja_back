@@ -49,6 +49,11 @@ public class TransactionFacade {
         return transactionRepository.findByPaymentMethodIdAndDateBetween(paymentMethodId, startDate, endDate);
     }
 
+    public List<Transaction> findByFilters(Long tenantId, LocalDate startDate, LocalDate endDate,
+                                           String transactionType, Long paymentMethodId) {
+        return transactionRepository.findByFilters(tenantId, startDate, endDate, transactionType, paymentMethodId);
+    }
+
     @Transactional(readOnly = false)
     public void delete(Transaction entity) {
         transactionRepository.delete(entity);
