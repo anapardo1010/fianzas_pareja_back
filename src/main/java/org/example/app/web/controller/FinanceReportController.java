@@ -153,11 +153,48 @@ public class FinanceReportController {
         return ResponseEntity.ok(ResponseModel.success(null, "Periodo marcado como pagado exitosamente"));
     }
 
+    @GetMapping("/credit-card/{paymentMethodId}/available-periods")
+    @Operation(
+            summary = "Periodos disponibles de una tarjeta de crédito",
+            description = "Devuelve el historial de cortes/periodos calculados para la tarjeta de crédito de los últimos 12 meses."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Periodos obtenidos correctamente"),
+            @ApiResponse(responseCode = "404", description = "Tarjeta no encontrada"),
+            @ApiResponse(responseCode = "500", description = "Error interno")
+    })
+    public ResponseEntity<ResponseModel<List<CreditCardPeriodModel>>> getAvailablePeriods(
+            @PathVariable Long paymentMethodId) {
+        return ResponseEntity.ok(ResponseModel.success(
+                financeReportService.getAvailablePeriods(paymentMethodId),
+                "Periodos disponibles obtenidos exitosamente"
+        ));
+    }
+
+    @GetMapping("/credit-card/{paymentMethodId}/proportional-payment")
+    @Operation(
+            summary = "Pago proporcional de una tarjeta de crédito específica",
+            description = "Calcula la contribución de cada usuario para una tarjeta en un periodo específico."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pago proporcional obtenido correctamente"),
+            @ApiResponse(responseCode = "404", description = "Tarjeta no encontrada"),
+            @ApiResponse(responseCode = "500", description = "Error interno")
+    })
+    public ResponseEntity<ResponseModel<CreditCardProportionalPaymentModel>> getCreditCardProportionalPayment(
+            @PathVariable Long paymentMethodId,
+            @RequestParam(required = false) String periodId) {
+        return ResponseEntity.ok(ResponseModel.success(
+                financeReportService.getCreditCardProportionalPayment(paymentMethodId, periodId),
+                "Pago proporcional de la tarjeta calculado exitosamente"
+        ));
+    }
+
     @GetMapping("/credit-card/{paymentMethodId}/period-detail")
     @Operation(
-            summary = "Detalle de cargos del periodo activo de una tarjeta",
+            summary = "Detalle de cargos de un periodo de una tarjeta",
             description = "Devuelve el desglose completo de todos los cargos que forman el total " +
-                    "a pagar del periodo activo: transacciones directas y cuotas MSI que caen en el periodo."
+                    "a pagar de un periodo específico: transacciones directas y cuotas MSI que caen en el periodo."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Detalle obtenido correctamente"),
@@ -168,10 +205,12 @@ public class FinanceReportController {
     })
     public ResponseEntity<ResponseModel<CreditCardPeriodDetailModel>> getCreditCardPeriodDetail(
             @Parameter(description = "ID del método de pago (tarjeta de crédito)", required = true, example = "23")
-            @PathVariable Long paymentMethodId) {
+            @PathVariable Long paymentMethodId,
+            @Parameter(description = "ID del periodo específico (opcional)", example = "2026-03-02_2026-04-01")
+            @RequestParam(required = false) String periodId) {
 
         return ResponseEntity.ok(ResponseModel.success(
-                financeReportService.getCreditCardPeriodDetail(paymentMethodId),
+                financeReportService.getCreditCardPeriodDetail(paymentMethodId, periodId),
                 "Detalle del periodo obtenido exitosamente"
         ));
     }

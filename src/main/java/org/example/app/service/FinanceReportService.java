@@ -219,7 +219,6 @@ public class FinanceReportService {
     public List<CreditCardBalanceModel> getCreditCardBalances(Long tenantId) {
         log.info("Calculando saldos de tarjetas de crédito para tenant: {}", tenantId);
 
-        LocalDate today = LocalDate.now();
         List<User> users = userFacade.findByTenantIdAndActive(tenantId);
         List<CreditCardBalanceModel> balances = new ArrayList<>();
 
@@ -233,112 +232,170 @@ public class FinanceReportService {
                     continue;
                 }
 
-                LocalDate lastCutDate     = calculateLastCutDate(today, pm.getCutDay());
-                LocalDate previousCutDate = lastCutDate.minusMonths(1);
-                LocalDate nextCutDate     = lastCutDate.plusMonths(1);
-
-                String lastPeriodId = previousCutDate.plusDays(1) + "_" + lastCutDate;
-                boolean lastPeriodPaid = periodPaymentRepository
-                        .existsByPaymentMethodIdAndPeriodId(pm.getId(), lastPeriodId);
-
-                LocalDate rangeStart, rangeEnd, displayCutDate, currentPaymentDate;
-                String periodId;
-                boolean isPaid;
-
-                if (lastPeriodPaid) {
-                    rangeStart         = lastCutDate.plusDays(1);
-                    rangeEnd           = nextCutDate;
-                    displayCutDate     = nextCutDate;
-                    currentPaymentDate = calculatePaymentDate(nextCutDate, pm.getPaymentDay());
-                    periodId           = rangeStart + "_" + rangeEnd;
-                    isPaid             = periodPaymentRepository
-                            .existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
-                } else {
-                    rangeStart         = previousCutDate.plusDays(1);
-                    rangeEnd           = lastCutDate;
-                    displayCutDate     = lastCutDate;
-                    currentPaymentDate = calculatePaymentDate(lastCutDate, pm.getPaymentDay());
-                    periodId           = lastPeriodId;
-                    isPaid             = false;
-                }
-
-                log.info("Tarjeta {}: today={}, displayCutDate={}, nextCutDate={}, currentPaymentDate={}, daysUntilCut={}, daysUntilPayment={}, isPaid={}",
-                        pm.getBankName(), today, displayCutDate, nextCutDate, currentPaymentDate,
-                        ChronoUnit.DAYS.between(today, displayCutDate),
-                        ChronoUnit.DAYS.between(today, currentPaymentDate), isPaid);
-
-                List<Transaction> transactions = transactionFacade
-                        .findByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
-
-                // Solo sumar transacciones directas (sin MSI). Las de MSI se cuentan vía cuotas.
-                BigDecimal currentBalance = transactions.stream()
-                        .filter(tx -> !Boolean.TRUE.equals(tx.getHasInstallments()))
-                        .map(Transaction::getAmount)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                List<Installment> installments = installmentFacade
-                        .findPendingByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
-
-                BigDecimal pendingInstallments = installments.stream()
-                        .map(Installment::getInstallmentAmount)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                BigDecimal totalDue = currentBalance.add(pendingInstallments);
-
-                String paymentStatus;
-                if (isPaid) {
-                    paymentStatus = "PAID";
-                } else if (today.isAfter(currentPaymentDate)) {
-                    paymentStatus = "OVERDUE";
-                } else {
-                    paymentStatus = "PENDING";
-                }
-
-                String status;
-                if (today.isBefore(displayCutDate)) {
-                    status = "PENDING_CUT";
-                } else if (!today.isAfter(currentPaymentDate)) {
-                    status = "PENDING_PAYMENT";
-                } else {
-                    status = "OVERDUE";
-                }
-
-                int daysUntilCut     = (int) ChronoUnit.DAYS.between(today, displayCutDate);
-                int daysUntilPayment = (int) ChronoUnit.DAYS.between(today, currentPaymentDate);
-
-                log.info("Tarjeta {}: Saldo directo ${}, Cuotas MSI ${}, Total ${}, Status: {}, PaymentStatus: {}, Pagado: {}, PeriodId: {}",
-                        pm.getBankName(), currentBalance, pendingInstallments, totalDue, status, paymentStatus, isPaid, periodId);
-
-                balances.add(new CreditCardBalanceModel(
-                        pm.getId(),
-                        pm.getUser() != null ? pm.getUser().getId() : null,
-                        pm.getAlias(),
-                        pm.getBankName(),
-                        pm.getAccountType(),
-                        pm.getCutDay(),
-                        pm.getPaymentDay(),
-                        displayCutDate,
-                        currentPaymentDate,
-                        nextCutDate,
-                        currentBalance,
-                        pendingInstallments,
-                        totalDue,
-                        transactions.size(),
-                        installments.size(),
-                        status,
-                        daysUntilCut,
-                        daysUntilPayment,
-                        paymentStatus,
-                        isPaid,
-                        periodId
-                ));
-
-                log.info("Tarjeta {}: total=${}, status={}, paymentStatus={}, periodId={}",
-                        pm.getBankName(), totalDue, status, paymentStatus, periodId);
+                balances.add(getCreditCardBalance(pm, null));
             }
         }
 
         return balances;
+    }
+
+    /**
+     * Calcula el saldo de una tarjeta de crédito específica para un periodo determinado.
+     * Si el periodId es null, utiliza el periodo activo por defecto (el más antiguo sin pagar, o el actual).
+     */
+    public CreditCardBalanceModel getCreditCardBalance(PaymentMethod pm, String periodId) {
+        LocalDate today = LocalDate.now();
+
+        if (periodId == null || periodId.trim().isEmpty()) {
+            periodId = getDefaultActivePeriod(pm);
+        }
+
+        String[] parts       = periodId.split("_");
+        LocalDate rangeStart = LocalDate.parse(parts[0]);
+        LocalDate rangeEnd   = LocalDate.parse(parts[1]);
+        LocalDate displayCutDate = rangeEnd;
+        LocalDate currentPaymentDate = calculatePaymentDate(rangeEnd, pm.getPaymentDay());
+        LocalDate nextCutDate     = rangeEnd.plusMonths(1).withDayOfMonth(Math.min(pm.getCutDay(), rangeEnd.plusMonths(1).lengthOfMonth()));
+
+        boolean isPaid = periodPaymentRepository.existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
+
+        log.info("Tarjeta {}: today={}, displayCutDate={}, nextCutDate={}, currentPaymentDate={}, isPaid={}",
+                pm.getBankName(), today, displayCutDate, nextCutDate, currentPaymentDate, isPaid);
+
+        List<Transaction> transactions = transactionFacade
+                .findByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
+
+        // Solo sumar transacciones directas (sin MSI). Las de MSI se cuentan vía cuotas.
+        BigDecimal currentBalance = transactions.stream()
+                .filter(tx -> !Boolean.TRUE.equals(tx.getHasInstallments()))
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<Installment> installments = installmentFacade
+                .findPendingByPaymentMethodAndDateRange(pm.getId(), rangeStart, rangeEnd);
+
+        BigDecimal pendingInstallments = installments.stream()
+                .map(Installment::getInstallmentAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalDue = currentBalance.add(pendingInstallments);
+
+        String paymentStatus;
+        if (isPaid) {
+            paymentStatus = "PAID";
+        } else if (today.isAfter(currentPaymentDate)) {
+            paymentStatus = "OVERDUE";
+        } else {
+            paymentStatus = "PENDING";
+        }
+
+        String status;
+        if (today.isBefore(displayCutDate)) {
+            status = "PENDING_CUT";
+        } else if (!today.isAfter(currentPaymentDate)) {
+            status = "PENDING_PAYMENT";
+        } else {
+            status = "OVERDUE";
+        }
+
+        int daysUntilCut     = (int) ChronoUnit.DAYS.between(today, displayCutDate);
+        int daysUntilPayment = (int) ChronoUnit.DAYS.between(today, currentPaymentDate);
+
+        log.info("Tarjeta {}: Saldo directo ${}, Cuotas MSI ${}, Total ${}, Status: {}, PaymentStatus: {}, Pagado: {}, PeriodId: {}",
+                pm.getBankName(), currentBalance, pendingInstallments, totalDue, status, paymentStatus, isPaid, periodId);
+
+        return new CreditCardBalanceModel(
+                pm.getId(),
+                pm.getUser() != null ? pm.getUser().getId() : null,
+                pm.getAlias(),
+                pm.getBankName(),
+                pm.getAccountType(),
+                pm.getCutDay(),
+                pm.getPaymentDay(),
+                displayCutDate,
+                currentPaymentDate,
+                nextCutDate,
+                currentBalance,
+                pendingInstallments,
+                totalDue,
+                transactions.size(),
+                installments.size(),
+                status,
+                daysUntilCut,
+                daysUntilPayment,
+                paymentStatus,
+                isPaid,
+                periodId
+        );
+    }
+
+    /**
+     * Genera la lista de periodos disponibles para una tarjeta de crédito (los últimos 12 meses y el actual en curso).
+     */
+    public List<CreditCardPeriodModel> getAvailablePeriods(Long paymentMethodId) {
+        PaymentMethod pm = paymentMethodFacade.findById(paymentMethodId)
+                .orElseThrow(() -> new IllegalArgumentException("Método de pago no encontrado: " + paymentMethodId));
+
+        if (!"CREDIT".equalsIgnoreCase(pm.getAccountType()) || pm.getCutDay() == null) {
+            throw new IllegalArgumentException("El método de pago no es una tarjeta de crédito");
+        }
+
+        List<CreditCardPeriodModel> periods = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        LocalDate lastCutDate = calculateLastCutDate(today, pm.getCutDay());
+        LocalDate nextCutDate = lastCutDate.plusMonths(1);
+
+        for (int i = 0; i < 13; i++) {
+            LocalDate end = nextCutDate.minusMonths(i);
+            end = end.withDayOfMonth(Math.min(pm.getCutDay(), end.lengthOfMonth()));
+
+            LocalDate prevEnd = end.minusMonths(1);
+            prevEnd = prevEnd.withDayOfMonth(Math.min(pm.getCutDay(), prevEnd.lengthOfMonth()));
+            LocalDate start = prevEnd.plusDays(1);
+
+            String periodId = start + "_" + end;
+            LocalDate paymentDate = calculatePaymentDate(end, pm.getPaymentDay());
+
+            boolean isPaid = periodPaymentRepository.existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
+
+            String paymentStatus;
+            if (isPaid) {
+                paymentStatus = "PAID";
+            } else if (today.isAfter(paymentDate)) {
+                paymentStatus = "OVERDUE";
+            } else {
+                paymentStatus = "PENDING";
+            }
+
+            periods.add(new CreditCardPeriodModel(periodId, start, end, paymentDate, paymentStatus, isPaid));
+        }
+
+        java.util.Collections.reverse(periods);
+        return periods;
+    }
+
+    /**
+     * Obtiene el periodo activo por defecto de una tarjeta de crédito.
+     * Prioriza el periodo no pagado más antiguo ya cortado, o el actual acumulándose en su defecto.
+     */
+    public String getDefaultActivePeriod(PaymentMethod pm) {
+        List<CreditCardPeriodModel> periods = getAvailablePeriods(pm.getId());
+        LocalDate today = LocalDate.now();
+
+        for (CreditCardPeriodModel period : periods) {
+            if (!period.isPaid() && !period.getEndDate().isAfter(today)) {
+                return period.getPeriodId();
+            }
+        }
+
+        if (!periods.isEmpty()) {
+            return periods.get(periods.size() - 1).getPeriodId();
+        }
+
+        LocalDate lastCutDate = calculateLastCutDate(today, pm.getCutDay());
+        LocalDate nextCutDate = lastCutDate.plusMonths(1);
+        return lastCutDate.plusDays(1) + "_" + nextCutDate;
     }
 
     // =========================================================================
@@ -430,6 +487,82 @@ public class FinanceReportService {
 
         log.info("Calculados pagos proporcionales para {} tarjetas", result.size());
         return result;
+    }
+
+    /**
+     * Calcula el pago proporcional de una tarjeta específica para un periodo determinado.
+     */
+    public CreditCardProportionalPaymentModel getCreditCardProportionalPayment(Long paymentMethodId, String periodId) {
+        log.info("Calculando pago proporcional para tarjeta {} en periodo {}", paymentMethodId, periodId);
+
+        PaymentMethod pm = paymentMethodFacade.findById(paymentMethodId)
+                .orElseThrow(() -> new IllegalArgumentException("Método de pago no encontrado: " + paymentMethodId));
+
+        if (!"CREDIT".equalsIgnoreCase(pm.getAccountType()) || pm.getCutDay() == null) {
+            throw new IllegalArgumentException("El método de pago no es una tarjeta de crédito con día de corte");
+        }
+
+        Long tenantId = pm.getUser().getTenant().getId();
+        List<User> users = userFacade.findByTenantIdAndActive(tenantId);
+
+        CreditCardBalanceModel card = getCreditCardBalance(pm, periodId);
+
+        String[] parts       = card.getPeriodId().split("_");
+        LocalDate rangeStart = LocalDate.parse(parts[0]);
+        LocalDate rangeEnd   = LocalDate.parse(parts[1]);
+
+        List<Transaction> transactions = transactionFacade
+                .findByPaymentMethodAndDateRange(card.getPaymentMethodId(), rangeStart, rangeEnd);
+
+        List<Installment> installments = installmentFacade
+                .findPendingByPaymentMethodAndDateRange(card.getPaymentMethodId(), rangeStart, rangeEnd);
+
+        Map<Long, BigDecimal> txSums          = buildZeroMap(users);
+        Map<Long, BigDecimal> installmentSums = buildZeroMap(users);
+
+        for (Transaction tx : transactions) {
+            if (Boolean.TRUE.equals(tx.getHasInstallments())) {
+                continue;
+            }
+            distributeAmount(tx.getAmount(), tx.getIsShared(), tx.getUser().getId(), users, txSums);
+        }
+
+        for (Installment inst : installments) {
+            distributeAmount(
+                    inst.getInstallmentAmount(),
+                    inst.getTransaction().getIsShared(),
+                    inst.getTransaction().getUser().getId(),
+                    users,
+                    installmentSums
+            );
+        }
+
+        List<UserPaymentShare> userShares = users.stream()
+                .map(u -> {
+                    BigDecimal txPart   = txSums.get(u.getId());
+                    BigDecimal instPart = installmentSums.get(u.getId());
+                    BigDecimal total    = txPart.add(instPart);
+                    BigDecimal pct      = u.getContributionPercentage() != null
+                            ? u.getContributionPercentage() : BigDecimal.valueOf(100);
+                    return new UserPaymentShare(u.getId(), u.getName(), pct, total);
+                })
+                .collect(Collectors.toList());
+
+        return new CreditCardProportionalPaymentModel(
+                card.getPaymentMethodId(),
+                card.getUserId(),
+                card.getAlias(),
+                card.getBankName(),
+                card.getCurrentCutDate(),
+                card.getCurrentPaymentDate(),
+                card.getCurrentBalance(),
+                card.getPendingInstallments(),
+                card.getTotalDue(),
+                card.getStatus(),
+                card.getPaymentStatus(),
+                card.getPeriodId(),
+                userShares
+        );
     }
 
     // =========================================================================
@@ -639,7 +772,17 @@ public class FinanceReportService {
      * - Cuotas MSI que proyectan su fecha dentro del periodo
      */
     public CreditCardPeriodDetailModel getCreditCardPeriodDetail(Long paymentMethodId) {
-        log.info("Obteniendo detalle de cargos del periodo activo para tarjeta: {}", paymentMethodId);
+        return getCreditCardPeriodDetail(paymentMethodId, null);
+    }
+
+    /**
+     * Devuelve el desglose completo de todos los cargos que forman el total a pagar
+     * de un periodo específico (o el periodo activo por defecto) de una tarjeta de crédito:
+     * - Transacciones directas (sin MSI)
+     * - Cuotas MSI que proyectan su fecha dentro del periodo
+     */
+    public CreditCardPeriodDetailModel getCreditCardPeriodDetail(Long paymentMethodId, String periodId) {
+        log.info("Obteniendo detalle de cargos para tarjeta: {} en periodo: {}", paymentMethodId, periodId);
 
         PaymentMethod pm = paymentMethodFacade.findById(paymentMethodId)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -650,33 +793,19 @@ public class FinanceReportService {
                     "El método de pago " + paymentMethodId + " no es una tarjeta de crédito con día de corte");
         }
 
-        // Calcular rango del periodo activo (misma lógica que getCreditCardBalances)
-        LocalDate today           = LocalDate.now();
-        LocalDate lastCutDate     = calculateLastCutDate(today, pm.getCutDay());
-        LocalDate previousCutDate = lastCutDate.minusMonths(1);
-        LocalDate nextCutDate     = lastCutDate.plusMonths(1);
-
-        String lastPeriodId   = previousCutDate.plusDays(1) + "_" + lastCutDate;
-        boolean lastPeriodPaid = periodPaymentRepository
-                .existsByPaymentMethodIdAndPeriodId(pm.getId(), lastPeriodId);
-
-        LocalDate rangeStart, rangeEnd, paymentDate;
-        String periodId, status, paymentStatus;
-
-        if (lastPeriodPaid) {
-            rangeStart  = lastCutDate.plusDays(1);
-            rangeEnd    = nextCutDate;
-            paymentDate = calculatePaymentDate(nextCutDate, pm.getPaymentDay());
-            periodId    = rangeStart + "_" + rangeEnd;
-        } else {
-            rangeStart  = previousCutDate.plusDays(1);
-            rangeEnd    = lastCutDate;
-            paymentDate = calculatePaymentDate(lastCutDate, pm.getPaymentDay());
-            periodId    = lastPeriodId;
+        if (periodId == null || periodId.trim().isEmpty()) {
+            periodId = getDefaultActivePeriod(pm);
         }
 
+        String[] dates      = periodId.split("_");
+        LocalDate rangeStart = LocalDate.parse(dates[0]);
+        LocalDate rangeEnd   = LocalDate.parse(dates[1]);
+        LocalDate paymentDate = calculatePaymentDate(rangeEnd, pm.getPaymentDay());
+
+        LocalDate today = LocalDate.now();
         boolean isPaid = periodPaymentRepository.existsByPaymentMethodIdAndPeriodId(pm.getId(), periodId);
 
+        String paymentStatus;
         if (isPaid) {
             paymentStatus = "PAID";
         } else if (today.isAfter(paymentDate)) {
@@ -685,6 +814,7 @@ public class FinanceReportService {
             paymentStatus = "PENDING";
         }
 
+        String status;
         if (today.isBefore(rangeEnd)) {
             status = "PENDING_CUT";
         } else if (!today.isAfter(paymentDate)) {
